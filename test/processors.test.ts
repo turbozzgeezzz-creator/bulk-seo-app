@@ -39,7 +39,7 @@ describe("processAltTextItem", () => {
     const r = await processAltTextItem(item, "ONLY_MISSING", deps(store));
     expect(r).toMatchObject({ status: "SUCCEEDED", before: "", after: "Blue linen shirt with a chest pocket on a wooden hanger" });
     expect(products[0].media[0].alt).toBe("Blue linen shirt with a chest pocket on a wooden hanger");
-    expect(store.calls.map((c) => c.op)).toEqual(["BulkSeoAltItem", "BulkSeoSetAlt", "BulkSeoReadAlt"]);
+    expect(store.calls.map((c) => c.op)).toEqual(["BulkFlowAltItem", "BulkFlowSetAlt", "BulkFlowReadAlt"]);
   });
 
   it("never writes blank alt text: the item fails with a reason and Shopify is not called", async () => {
@@ -48,7 +48,7 @@ describe("processAltTextItem", () => {
     const r = await processAltTextItem(item, "ONLY_MISSING", deps(store, { generateAltText: vi.fn(async () => ({ altText: "   ", mismatchNote: null })) }));
     expect(r.status).toBe("FAILED");
     if (r.status === "FAILED") expect(r.reason).toMatch(/blank/);
-    expect(store.calls.some((c) => c.op === "BulkSeoSetAlt")).toBe(false);
+    expect(store.calls.some((c) => c.op === "BulkFlowSetAlt")).toBe(false);
     expect(products[0].media[0].alt).toBeNull();
   });
 
@@ -135,7 +135,7 @@ describe("processMetaItem", () => {
     products[0].seo.title = "Merchant's own title";
     const store = fakeStore(products);
     await processMetaItem({ productId: item.productId }, "ONLY_MISSING", deps(store));
-    const write = store.calls.find((c) => c.op === "BulkSeoSetSeo")!;
+    const write = store.calls.find((c) => c.op === "BulkFlowSetSeo")!;
     expect((write.variables.product as { seo: object }).seo).not.toHaveProperty("title");
     expect(products[0].seo.title).toBe("Merchant's own title");
   });
@@ -149,7 +149,7 @@ describe("processMetaItem", () => {
       deps(store, { generateMeta: vi.fn(async () => ({ metaTitle: "Linen Shirt | Breathable Summer Shirt", metaDescription: "" })) }),
     );
     expect(r.status).toBe("FAILED");
-    expect(store.calls.some((c) => c.op === "BulkSeoSetSeo")).toBe(false);
+    expect(store.calls.some((c) => c.op === "BulkFlowSetSeo")).toBe(false);
   });
 
   it("does not report success when the write doesn't persist", async () => {

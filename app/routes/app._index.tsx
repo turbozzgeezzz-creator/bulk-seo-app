@@ -95,7 +95,10 @@ export default function Index() {
   const activeByType = Object.fromEntries(active.map((j) => [j.type, j]));
 
   return (
-    <s-page heading="Bulk SEO">
+    <s-page heading="BulkFlow">
+      <s-box paddingBlockEnd="base">
+        <img src="/brand/bulkflow-wordmark.png" alt="BulkFlow" width={240} height={56} style={{ display: "block", height: "auto" }} />
+      </s-box>
       <JobCard
         type="ALT_TEXT"
         activeJob={activeByType.ALT_TEXT}

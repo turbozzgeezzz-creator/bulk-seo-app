@@ -4,7 +4,7 @@ None of these have been guessed. Code that depends on them is either off or uses
 
 | # | Decision | Why it matters | Where it plugs in |
 |---|---|---|---|
-| 1 | **App name and branding** (name, icon, listing tagline) | Required for the Partner app, App Store listing, and billing plan names. `bulk-seo-app` is only a working codename. | `shopify.app.toml` `name`, landing page, listing |
+| 1 | ~~App name and branding~~ **Decided: BulkFlow**, logo provided. Listing tagline still open. | | `shopify.app.toml`, `public/brand/` |
 | 2 | **Pricing: price, currency, billing interval** | Billing is wired but off until set. | `BILLING_PLAN_NAME`, `BILLING_PLAN_AMOUNT`, `BILLING_PLAN_CURRENCY` env vars (`app/billing.server.ts`) |
 | 3 | **Billing Model: Billing API vs Shopify Managed Pricing** | Shopify can host the plan-selection page itself (Managed Pricing) instead of the app calling the Billing API. Code is currently Billing API. | `app/billing.server.ts`, `app/routes/app.tsx` |
 | 4 | **Free trial length** (or none) | Shown on the approval screen. | `BILLING_TRIAL_DAYS` |

@@ -1,5 +1,5 @@
 {
-  "name": "bulk-seo-app",
+  "name": "bulkflow",
   "private": true,
   "scripts": {
     "build": "react-router build",

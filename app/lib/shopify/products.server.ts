@@ -21,7 +21,7 @@ export interface ScannedProduct {
 }
 
 const SCAN_QUERY = `#graphql
-  query BulkSeoScanProducts($first: Int!, $after: String, $mediaFirst: Int!) {
+  query BulkFlowScanProducts($first: Int!, $after: String, $mediaFirst: Int!) {
     products(first: $first, after: $after, sortKey: ID) {
       pageInfo { hasNextPage endCursor }
       nodes {
@@ -65,7 +65,7 @@ interface RawMedia {
 }
 
 const MORE_MEDIA_QUERY = `#graphql
-  query BulkSeoMoreMedia($id: ID!, $after: String, $mediaFirst: Int!) {
+  query BulkFlowMoreMedia($id: ID!, $after: String, $mediaFirst: Int!) {
     product(id: $id) {
       media(first: $mediaFirst, after: $after) {
         pageInfo { hasNextPage endCursor }
@@ -147,7 +147,7 @@ export interface MediaImageState {
 }
 
 const ALT_ITEM_QUERY = `#graphql
-  query BulkSeoAltItem($productId: ID!, $mediaId: ID!) {
+  query BulkFlowAltItem($productId: ID!, $mediaId: ID!) {
     product(id: $productId) { ${PRODUCT_CONTEXT_FIELDS} }
     media: node(id: $mediaId) {
       ... on MediaImage { id alt status image { url } }
@@ -170,7 +170,7 @@ export async function loadAltItem(
 }
 
 const FILE_UPDATE_MUTATION = `#graphql
-  mutation BulkSeoSetAlt($files: [FileUpdateInput!]!) {
+  mutation BulkFlowSetAlt($files: [FileUpdateInput!]!) {
     fileUpdate(files: $files) {
       files { id alt }
       userErrors { field message code }
@@ -178,7 +178,7 @@ const FILE_UPDATE_MUTATION = `#graphql
   }`;
 
 const MEDIA_ALT_QUERY = `#graphql
-  query BulkSeoReadAlt($id: ID!) {
+  query BulkFlowReadAlt($id: ID!) {
     node(id: $id) { ... on MediaImage { id alt } }
   }`;
 
@@ -207,7 +207,7 @@ export async function writeAndVerifyAltText(graphql: AdminGraphql, mediaId: stri
 }
 
 const PRODUCT_QUERY = `#graphql
-  query BulkSeoProduct($id: ID!) { product(id: $id) { ${PRODUCT_CONTEXT_FIELDS} } }`;
+  query BulkFlowProduct($id: ID!) { product(id: $id) { ${PRODUCT_CONTEXT_FIELDS} } }`;
 
 export async function loadProduct(graphql: AdminGraphql, productId: string): Promise<ProductDetails | null> {
   const data = await shopifyQuery<{ product: ProductDetails | null }>(graphql, PRODUCT_QUERY, { id: productId });
@@ -215,7 +215,7 @@ export async function loadProduct(graphql: AdminGraphql, productId: string): Pro
 }
 
 const PRODUCT_SEO_MUTATION = `#graphql
-  mutation BulkSeoSetSeo($product: ProductUpdateInput!) {
+  mutation BulkFlowSetSeo($product: ProductUpdateInput!) {
     productUpdate(product: $product) {
       product { id }
       userErrors { field message }

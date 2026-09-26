@@ -1,6 +1,6 @@
 # Staged build plan
 
-Working codename: **bulk-seo-app**. The public name is an open decision (see [OPEN_DECISIONS.md](OPEN_DECISIONS.md)).
+App name: **BulkFlow** (the GitHub repo keeps the `bulk-seo-app` name).
 
 The rule for every stage: nothing is marked done until it has been run against a real Shopify development store, with evidence (screenshots or logs of a real install, a real bulk run, real generated output).
 

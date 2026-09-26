@@ -21,7 +21,9 @@ export default function App() {
   return (
     <div className={styles.index}>
       <div className={styles.content}>
-        <h1 className={styles.heading}>Bulk SEO for Shopify</h1>
+        <h1 className={styles.heading}>
+          <img src="/brand/bulkflow-wordmark.png" alt="BulkFlow" width={400} height={94} style={{ maxWidth: "100%", height: "auto" }} />
+        </h1>
         <p className={styles.text}>
           Fill in image alt text, meta titles and meta descriptions across your whole catalog, with every change verified and every failure explained.
         </p>

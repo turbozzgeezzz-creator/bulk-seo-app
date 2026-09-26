@@ -11,7 +11,7 @@ import { fakeStore, type FakeProduct } from "./helpers";
 let prisma: PrismaClient;
 
 beforeEach(() => {
-  const dir = mkdtempSync(path.join(tmpdir(), "bulkseo-"));
+  const dir = mkdtempSync(path.join(tmpdir(), "bulkflow-"));
   const file = path.join(dir, "test.sqlite");
   copyFileSync(path.join(__dirname, "..", "prisma", "dev.sqlite"), file);
   prisma = new PrismaClient({ datasourceUrl: `file:${file}` });

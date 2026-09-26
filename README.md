@@ -1,4 +1,6 @@
-# bulk-seo-app (working codename)
+# BulkFlow
+
+![BulkFlow](public/brand/bulkflow-wordmark.png)
 
 An embedded Shopify app for bulk product SEO: image alt text, meta titles and meta descriptions, for any merchant who installs it.
 

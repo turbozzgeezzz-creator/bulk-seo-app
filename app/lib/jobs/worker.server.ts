@@ -43,13 +43,13 @@ async function tick() {
 
 declare global {
   // eslint-disable-next-line no-var
-  var bulkSeoWorkerStarted: boolean | undefined;
+  var bulkFlowWorkerStarted: boolean | undefined;
 }
 
 /** Starts the in-process job ticker once per process (survives dev hot reloads). */
 export function ensureWorkerStarted() {
-  if (global.bulkSeoWorkerStarted || process.env.DISABLE_JOB_WORKER === "1") return;
-  global.bulkSeoWorkerStarted = true;
+  if (global.bulkFlowWorkerStarted || process.env.DISABLE_JOB_WORKER === "1") return;
+  global.bulkFlowWorkerStarted = true;
   setInterval(() => {
     tick().catch((err) => console.error("[jobs] worker tick failed:", err));
   }, TICK_MS).unref();

@@ -53,7 +53,7 @@ export function fakeStore(products: FakeProduct[], opts: { pageSize?: number; dr
   const mediaNode = (m: FakeMedia) => ({ id: m.id, mediaContentType: "IMAGE", alt: m.alt, status: m.status ?? "READY", image: { url: m.url } });
 
   return fakeGraphql({
-    BulkSeoScanProducts: (v) => {
+    BulkFlowScanProducts: (v) => {
       const start = v.after ? Number(v.after) : 0;
       const slice = products.slice(start, start + pageSize);
       const next = start + pageSize < products.length ? String(start + pageSize) : null;
@@ -73,19 +73,19 @@ export function fakeStore(products: FakeProduct[], opts: { pageSize?: number; dr
         },
       };
     },
-    BulkSeoMoreMedia: (v) => {
+    BulkFlowMoreMedia: (v) => {
       const p = product(String(v.id))!;
       const start = Number(v.after);
       const slice = p.media.slice(start, start + Number(v.mediaFirst));
       const end = start + slice.length;
       return { product: { media: { pageInfo: { hasNextPage: end < p.media.length, endCursor: String(end) }, nodes: slice.map(mediaNode) } } };
     },
-    BulkSeoAltItem: (v) => {
+    BulkFlowAltItem: (v) => {
       const p = product(String(v.productId));
       const m = findMedia(String(v.mediaId));
       return { product: p ? details(p) : null, media: m ? { id: m.id, alt: m.alt, status: m.status ?? "READY", image: { url: m.url } } : null };
     },
-    BulkSeoSetAlt: (v) => {
+    BulkFlowSetAlt: (v) => {
       const [{ id, alt }] = v.files as { id: string; alt: string }[];
       if (opts.altUserErrorFor?.has(id)) {
         return { fileUpdate: { files: null, userErrors: [{ field: ["files", "0", "alt"], message: "Alt is invalid" }] } };
@@ -94,15 +94,15 @@ export function fakeStore(products: FakeProduct[], opts: { pageSize?: number; dr
       if (!opts.dropWritesFor?.has(id)) m.alt = alt;
       return { fileUpdate: { files: [{ id, alt }], userErrors: [] } };
     },
-    BulkSeoReadAlt: (v) => {
+    BulkFlowReadAlt: (v) => {
       const m = findMedia(String(v.id));
       return { node: m ? { id: m.id, alt: m.alt } : null };
     },
-    BulkSeoProduct: (v) => {
+    BulkFlowProduct: (v) => {
       const p = product(String(v.id));
       return { product: p ? details(p) : null };
     },
-    BulkSeoSetSeo: (v) => {
+    BulkFlowSetSeo: (v) => {
       const input = v.product as { id: string; seo: { title?: string; description?: string } };
       const p = product(input.id)!;
       if (!opts.dropWritesFor?.has(p.id)) Object.assign(p.seo, input.seo);

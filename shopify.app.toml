@@ -1,7 +1,9 @@
 # This file stores configurations for your Shopify app.
-client_id = ""
-# Working codename only; the public app name is an open decision (docs/OPEN_DECISIONS.md).
-name = "bulk-seo-app"
+# The Client ID is a public identifier (it appears in every install URL), so it is
+# committed here as the Shopify CLI expects. The Client Secret is NOT: it lives only
+# in SHOPIFY_API_SECRET (.env locally, secrets storage in production).
+client_id = "112d8cc57cd35b3baa6d4718b23c7f02"
+name = "BulkFlow"
 embedded = true
 
 [access_scopes]
