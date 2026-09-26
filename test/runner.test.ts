@@ -1,6 +1,3 @@
-import { copyFileSync, mkdtempSync } from "node:fs";
-import { tmpdir } from "node:os";
-import path from "node:path";
 import { PrismaClient } from "@prisma/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { GenerationError } from "../app/lib/ai/claude.server";
@@ -10,11 +7,9 @@ import { fakeStore, type FakeProduct } from "./helpers";
 
 let prisma: PrismaClient;
 
-beforeEach(() => {
-  const dir = mkdtempSync(path.join(tmpdir(), "bulkflow-"));
-  const file = path.join(dir, "test.sqlite");
-  copyFileSync(path.join(__dirname, "..", "prisma", "dev.sqlite"), file);
-  prisma = new PrismaClient({ datasourceUrl: `file:${file}` });
+beforeEach(async () => {
+  prisma = new PrismaClient({ datasourceUrl: process.env.TEST_DATABASE_URL });
+  await prisma.$executeRawUnsafe('TRUNCATE "BulkJobItem", "BulkJob", "Shop", "Session" CASCADE');
 });
 afterEach(async () => {
   await prisma.$disconnect();
@@ -155,8 +150,10 @@ describe("bulk alt-text job", () => {
     const store = fakeStore(makeCatalog(4, 1));
     const { jobId } = (await createJob(prisma, SHOP, "ALT_TEXT", "ONLY_MISSING")) as { ok: true; jobId: string };
     const getDeps = vi.fn(async () => depsFor(store));
-    await Promise.all([1, 2, 3].map(() => runJobChunk(jobId, { prisma, getDeps, timeBudgetMs: 60_000 })));
+    const claimed = await Promise.all([1, 2, 3].map(() => runJobChunk(jobId, { prisma, getDeps, timeBudgetMs: 60_000 })));
     expect(getDeps).toHaveBeenCalledTimes(1);
+    // Only the claim holder reports doing work, so only it schedules the next chunk.
+    expect(claimed.filter(Boolean)).toHaveLength(1);
     const job = await prisma.bulkJob.findUniqueOrThrow({ where: { id: jobId } });
     expect(job).toMatchObject({ status: "COMPLETED", processed: 4, succeeded: 4 });
   });

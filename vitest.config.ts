@@ -6,5 +6,7 @@ export default defineConfig({
     include: ["test/**/*.test.ts"],
     globalSetup: ["test/globalSetup.ts"],
     env: { DISABLE_JOB_WORKER: "1" },
+    // Runner tests share one Postgres database, so files run one at a time.
+    fileParallelism: false,
   },
 });

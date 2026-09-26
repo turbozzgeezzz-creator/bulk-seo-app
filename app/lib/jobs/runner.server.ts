@@ -138,8 +138,12 @@ async function failJob(prisma: PrismaClient, jobId: string, reason: string) {
   await prisma.bulkJob.update({ where: { id: jobId }, data: { status: "FAILED", error: reason, finishedAt: new Date() } });
 }
 
-/** Processes one bounded chunk of a job. Safe to call concurrently; only the claim holder does work. */
-export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<void> {
+/**
+ * Processes one bounded chunk of a job. Safe to call concurrently; only the
+ * claim holder does work. Returns whether this call held the claim (so the
+ * caller knows whether it's responsible for scheduling the next chunk).
+ */
+export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<boolean> {
   const { prisma } = opts;
   const budget = opts.timeBudgetMs ?? DEFAULT_TIME_BUDGET_MS;
   const concurrency = opts.concurrency ?? DEFAULT_CONCURRENCY;
@@ -149,7 +153,7 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<v
     where: { id: jobId, status: { in: [...ACTIVE_STATUSES] }, OR: [{ claimedUntil: null }, { claimedUntil: { lt: now } }] },
     data: { claimedUntil: new Date(now.getTime() + budget + CLAIM_GRACE_MS) },
   });
-  if (claim.count === 0) return;
+  if (claim.count === 0) return false;
 
   try {
     const job = await prisma.bulkJob.findUniqueOrThrow({ where: { id: jobId } });
@@ -160,7 +164,7 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<v
       deps = await opts.getDeps(job.shop);
     } catch (err) {
       await failJob(prisma, jobId, `The app no longer has access to this store (${err instanceof Error ? err.message : String(err)}). Reinstall the app and run the job again.`);
-      return;
+      return true;
     }
 
     if (!job.scanComplete) {
@@ -168,7 +172,7 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<v
         await scanSome(prisma, job, deps, deadline);
       } catch (err) {
         await failJob(prisma, jobId, `Could not read the product catalog from Shopify: ${err instanceof Error ? err.message : String(err)}`);
-        return;
+        return true;
       }
     }
 
@@ -181,7 +185,7 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<v
     const retryIdsThisChunk = new Set<string>();
     while (Date.now() < deadline) {
       const current = await prisma.bulkJob.findUnique({ where: { id: jobId }, select: { status: true } });
-      if (!current || current.status !== "RUNNING") return; // cancelled or finished elsewhere
+      if (!current || current.status !== "RUNNING") return true; // cancelled or finished elsewhere
 
       const batch = await prisma.bulkJobItem.findMany({
         where: { jobId, status: "PENDING", id: { notIn: [...retryIdsThisChunk] } },
@@ -198,11 +202,12 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<v
       }
       if (fatal) {
         await failJob(prisma, jobId, `${fatal.reason} The job was stopped so the rest of your catalog wasn't marked as failed; nothing else was changed.`);
-        return;
+        return true;
       }
     }
 
     await finishIfDone(prisma, jobId);
+    return true;
   } finally {
     await prisma.bulkJob.updateMany({ where: { id: jobId }, data: { claimedUntil: null } });
   }

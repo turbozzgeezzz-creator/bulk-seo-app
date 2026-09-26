@@ -29,9 +29,9 @@ Built on Shopify's official [React Router app template](https://github.com/Shopi
 npm install
 npm run config:link   # link to your Partner app
 npm run dev           # Shopify CLI: tunnel + install on a dev store
-npm test              # unit + integration tests (no network needed)
+TEST_DATABASE_URL=postgresql://... npm test   # unit + integration tests against a throwaway Postgres
 ```
 
 Environment: `ANTHROPIC_API_KEY` (required for generation), `AI_MODEL` (optional, defaults to `claude-opus-5`), billing vars in `app/billing.server.ts` (off until pricing is decided).
 
-SQLite is for development only; production needs Postgres (change the Prisma datasource).
+Database: Postgres everywhere (`DATABASE_URL`). Deploying to Vercel: see [docs/DEPLOY_VERCEL.md](docs/DEPLOY_VERCEL.md). `/healthz` reports missing configuration by name.

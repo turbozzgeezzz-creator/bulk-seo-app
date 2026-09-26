@@ -7,13 +7,23 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 import { billingConfig } from "./billing.server";
+import { DEFAULT_SCOPES, configErrorResponse, missingRequiredConfig, resolveAppUrl } from "./config.server";
+
+const missing = missingRequiredConfig();
+if (missing.length) {
+  console.error(`[config] BulkFlow is missing required environment variables: ${missing.join(", ")}. Admin pages will return 503 until they are set; see /healthz.`);
+}
+// Placeholders keep the server bundle loadable when config is missing, so
+// public pages and /healthz still work and can say what's wrong. Pages that
+// need Shopify access refuse to run while anything is missing (see requireConfig).
+const PLACEHOLDER_URL = "https://bulkflow-app-url-not-configured.invalid";
 
 const shopify = shopifyApp({
-  apiKey: process.env.SHOPIFY_API_KEY,
-  apiSecretKey: process.env.SHOPIFY_API_SECRET || "",
+  apiKey: process.env.SHOPIFY_API_KEY || "missing-api-key",
+  apiSecretKey: process.env.SHOPIFY_API_SECRET || "missing-api-secret",
   apiVersion: ApiVersion.October25,
-  scopes: process.env.SCOPES?.split(","),
-  appUrl: process.env.SHOPIFY_APP_URL || "",
+  scopes: (process.env.SCOPES || DEFAULT_SCOPES).split(","),
+  appUrl: resolveAppUrl() ?? PLACEHOLDER_URL,
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
@@ -44,3 +54,11 @@ export const unauthenticated = shopify.unauthenticated;
 export const login = shopify.login;
 export const registerWebhooks = shopify.registerWebhooks;
 export const sessionStorage = shopify.sessionStorage;
+
+/** Call first in any loader/action that needs Shopify or the database. */
+export function requireConfig() {
+  const stillMissing = missingRequiredConfig();
+  if (stillMissing.length) {
+    throw configErrorResponse(stillMissing);
+  }
+}

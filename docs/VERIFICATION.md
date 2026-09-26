@@ -26,8 +26,8 @@ Prerequisites: Node 22+, the Shopify CLI (`npm i -g @shopify/cli`), a Partner ac
 ```sh
 git clone https://github.com/turbozzgeezzz-creator/bulk-seo-app.git && cd bulk-seo-app
 npm install
-cp .env.example .env          # then fill in ANTHROPIC_API_KEY (the CLI supplies the Shopify values)
-npx prisma migrate deploy
+cp .env.example .env          # fill in DATABASE_URL (local Postgres) and ANTHROPIC_API_KEY; the CLI supplies the Shopify values
+npm run db:migrate
 npm run dev                   # log in to the Partner account when prompted, pick the BulkFlow app and the dev store
 ```
 

@@ -5,12 +5,12 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
-// enough when changing adapters.
-// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+// Postgres everywhere (dev, test, production). On Vercel, create a Postgres
+// database from the project's Storage tab (Neon); it sets DATABASE_URL (pooled,
+// used at runtime) and DATABASE_URL_UNPOOLED (used for migrations at build time).
 datasource db {
-  provider = "sqlite"
-  url      = "file:dev.sqlite"
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 model Session {
