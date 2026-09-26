@@ -1,0 +1,119 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Note that some adapters may set a maximum length for the String type by default, please ensure your strings are long
+// enough when changing adapters.
+// See https://www.prisma.io/docs/orm/reference/prisma-schema-reference#string for more information
+datasource db {
+  provider = "sqlite"
+  url      = "file:dev.sqlite"
+}
+
+model Session {
+  id            String    @id
+  shop          String
+  state         String
+  isOnline      Boolean   @default(false)
+  scope         String?
+  expires       DateTime?
+  accessToken   String
+  userId        BigInt?
+  firstName     String?
+  lastName      String?
+  email         String?
+  accountOwner  Boolean   @default(false)
+  locale        String?
+  collaborator  Boolean?  @default(false)
+  emailVerified Boolean?  @default(false)
+  refreshToken        String?
+  refreshTokenExpires DateTime?
+}
+
+// ---------------------------------------------------------------------------
+// Multi-tenant app data. Every row below is keyed by `shop` (the
+// myshopify.com domain) and every query in app code filters by it — there is
+// no global/shared catalog data. `shop/redact` deletes all of it for a shop.
+// ---------------------------------------------------------------------------
+
+model Shop {
+  shop          String    @id
+  installedAt   DateTime  @default(now())
+  uninstalledAt DateTime?
+  updatedAt     DateTime  @updatedAt
+}
+
+model BulkJob {
+  id     String @id @default(cuid())
+  shop   String
+  // ALT_TEXT (one item per product image) | META (one item per product)
+  type   String
+  // ONLY_MISSING (default: never touch a field that already has a value) | OVERWRITE_ALL
+  mode   String @default("ONLY_MISSING")
+  // SCANNING -> RUNNING -> COMPLETED | COMPLETED_WITH_ERRORS | FAILED | CANCELLED
+  status String @default("SCANNING")
+
+  // Catalog scan state (the job enumerates products page by page before
+  // and while processing, so a 10k-product store never has to be listed
+  // inside one HTTP request).
+  scanCursor   String?
+  scanComplete Boolean @default(false)
+
+  // Images (ALT_TEXT) or products (META) looked at during the scan, including
+  // ones that already had a value and so needed no work in ONLY_MISSING mode.
+  scanned   Int @default(0)
+  // Items that need work. Grows while scanning, then is fixed.
+  total     Int @default(0)
+  processed Int @default(0)
+  succeeded Int @default(0)
+  failed    Int @default(0)
+  skipped   Int @default(0)
+
+  // Short-lived claim so at most one worker processes a job at a time,
+  // without holding a DB transaction open across slow AI/Shopify calls.
+  claimedUntil DateTime?
+  // Job-level error (e.g. scan failed, shop uninstalled). Item-level errors live on BulkJobItem.
+  error        String?
+
+  createdAt  DateTime  @default(now())
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  items BulkJobItem[]
+
+  @@index([shop, createdAt])
+  @@index([status])
+}
+
+model BulkJobItem {
+  id        String  @id @default(cuid())
+  jobId     String
+  job       BulkJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  shop      String
+  productId String
+  mediaId   String  @default("") // ALT_TEXT: MediaImage GID. META: "" (non-null so the unique key dedupes).
+  label     String
+  imageUrl  String?
+
+  // PENDING | SUCCEEDED | FAILED | SKIPPED
+  status   String  @default("PENDING")
+  attempts Int     @default(0)
+  // JSON strings: what the field(s) held before and what we wrote (verified by read-back).
+  before   String?
+  after    String?
+  // Human-readable reason shown in the UI. Never blank when status is FAILED or SKIPPED.
+  error    String?
+  // Set when the vision model says the photo doesn't match the product.
+  // Informational only: it never blocks alt text from being written.
+  note     String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([jobId, productId, mediaId])
+  @@index([jobId, status])
+  @@index([shop])
+}
