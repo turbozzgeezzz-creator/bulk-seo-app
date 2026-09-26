@@ -24,7 +24,7 @@ Checked on 2026-09-26: the sandbox's network policy blocks every Shopify host (`
 Prerequisites: Node 22+, the Shopify CLI (`npm i -g @shopify/cli`), a Partner account with access to the BulkFlow app, and an Anthropic API key.
 
 ```sh
-git clone https://github.com/turboexpresss0-coder/bulk-seo-app.git && cd bulk-seo-app
+git clone https://github.com/turbozzgeezzz-creator/bulk-seo-app.git && cd bulk-seo-app
 npm install
 cp .env.example .env          # then fill in ANTHROPIC_API_KEY (the CLI supplies the Shopify values)
 npx prisma migrate deploy
