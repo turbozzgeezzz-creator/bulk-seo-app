@@ -48,6 +48,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const body = {
     ok,
     ...buildInfo(),
+    // Public identifier: compare with the id in the admin URL
+    // (admin.shopify.com/store/<store>/apps/<client id>). A mismatch, or a
+    // Client Secret that doesn't match it, makes the embedded app fail to load.
+    clientId: process.env.SHOPIFY_API_KEY ?? null,
     appUrl: appUrl.url,
     appUrlSource: appUrl.source,
     ...(appUrl.problem ? { appUrlProblem: appUrl.problem } : {}),
