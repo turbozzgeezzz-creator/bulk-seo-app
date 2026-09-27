@@ -1,5 +1,6 @@
 import prisma from "../db.server";
-import { buildInfo, checkConfig, resolveAppUrlDetailed } from "../config.server";
+import type { LoaderFunctionArgs } from "react-router";
+import { buildInfo, checkConfig, isPerDeploymentVercelHost, resolveAppUrlDetailed } from "../config.server";
 
 /**
  * Deployment diagnostics: which settings are present (names only, never
@@ -7,7 +8,22 @@ import { buildInfo, checkConfig, resolveAppUrlDetailed } from "../config.server"
  * database is reachable and migrated. Returns 200 only when everything
  * required is in place, so it doubles as an uptime check.
  */
-export const loader = async () => {
+/** The exact values the Shopify app configuration must hold for this deployment. */
+function shopifySettings(appUrl: string | null) {
+  if (!appUrl) return null;
+  return {
+    appUrl,
+    allowedRedirectionUrls: [`${appUrl}/auth/callback`, `${appUrl}/auth/shopify/callback`, `${appUrl}/api/auth/callback`],
+    complianceWebhooks: {
+      customerDataRequest: `${appUrl}/webhooks/customers/data_request`,
+      customerDataErasure: `${appUrl}/webhooks/customers/redact`,
+      shopDataErasure: `${appUrl}/webhooks/shop/redact`,
+    },
+  };
+}
+
+export const loader = async ({ request }: LoaderFunctionArgs) => {
+  const servedFrom = new URL(request.url).host;
   const config = checkConfig();
   const appUrl = resolveAppUrlDetailed();
   let database: { ok: boolean; detail: string };
@@ -35,6 +51,14 @@ export const loader = async () => {
     appUrl: appUrl.url,
     appUrlSource: appUrl.source,
     ...(appUrl.problem ? { appUrlProblem: appUrl.problem } : {}),
+    servedFrom,
+    ...(isPerDeploymentVercelHost(servedFrom)
+      ? {
+          servedFromWarning:
+            "You opened this through a per-deployment address. It only works for people logged in to Vercel; merchants get Vercel's \"You Need Access\" page. Shopify must only ever use the appUrl above.",
+        }
+      : {}),
+    shopifyPartnerDashboardShouldHave: shopifySettings(appUrl.url),
     config: config.map(({ name, ok, required, hint }) => ({ name, set: ok, required, ...(ok ? {} : { hint }) })),
     database,
   };

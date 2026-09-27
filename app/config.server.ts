@@ -27,6 +27,24 @@ export interface AppUrlResolution {
   problem: string | null;
 }
 
+/**
+ * True for a Vercel per-deployment address such as
+ * bulk-seo-fuuf3pnyt-team-projects.vercel.app: a *.vercel.app host that isn't
+ * the production domain and contains Vercel's 9-character deployment id.
+ * These change on every deploy and sit behind Vercel's login under the
+ * default Deployment Protection, so a merchant sent there hits "You Need
+ * Access" instead of the app. Custom domains are never matched.
+ */
+export function isPerDeploymentVercelHost(host: string, env: NodeJS.ProcessEnv = process.env): boolean {
+  const h = host.toLowerCase().replace(/:\d+$/, "");
+  if (!h.endsWith(".vercel.app")) return false;
+  const production = env.VERCEL_PROJECT_PRODUCTION_URL?.trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/+$/, "");
+  if (production && h === production) return false;
+  if (env.VERCEL_URL && h === env.VERCEL_URL.toLowerCase()) return true;
+  const label = h.slice(0, -".vercel.app".length);
+  return label.split("-").some((part) => /^[a-z0-9]{9}$/.test(part) && /\d/.test(part) && /[a-z]/.test(part));
+}
+
 function normalizeUrl(raw: string): string | null {
   const trimmed = raw.trim();
   if (!trimmed) return null;
@@ -42,17 +60,25 @@ function normalizeUrl(raw: string): string | null {
 
 export function resolveAppUrlDetailed(env: NodeJS.ProcessEnv = process.env): AppUrlResolution {
   const explicit = env.SHOPIFY_APP_URL;
+  let explicitProblem: string | null = null;
   if (explicit?.trim()) {
     const url = normalizeUrl(explicit);
-    if (url) return { url, source: "SHOPIFY_APP_URL", problem: null };
-    return { url: null, source: null, problem: `SHOPIFY_APP_URL is set but isn't a usable URL ("${explicit.slice(0, 80)}"). Use the full production domain, e.g. https://bulk-seo-app.vercel.app` };
+    if (!url) {
+      return { url: null, source: null, problem: `SHOPIFY_APP_URL is set but isn't a usable URL ("${explicit.slice(0, 80)}"). Use the full production domain, e.g. https://bulk-seo-app.vercel.app` };
+    }
+    if (!isPerDeploymentVercelHost(new URL(url).hostname, env)) return { url, source: "SHOPIFY_APP_URL", problem: null };
+    // Never use a per-deployment URL as the app's address: fall back to the
+    // production domain and say so, rather than sending merchants to a Vercel
+    // login wall.
+    explicitProblem = `SHOPIFY_APP_URL is set to a Vercel per-deployment address (${url}), which is behind Vercel's login and changes on every deploy. Using the production domain instead. Change SHOPIFY_APP_URL in Vercel to the production domain (Settings → Domains), or delete it.`;
   }
   const vercel = env.VERCEL_PROJECT_PRODUCTION_URL;
   if (vercel?.trim()) {
     const url = normalizeUrl(vercel);
-    if (url) return { url, source: "VERCEL_PROJECT_PRODUCTION_URL", problem: null };
+    if (url) return { url, source: "VERCEL_PROJECT_PRODUCTION_URL", problem: explicitProblem };
     return { url: null, source: null, problem: `VERCEL_PROJECT_PRODUCTION_URL isn't a usable URL ("${vercel.slice(0, 80)}"). Set SHOPIFY_APP_URL explicitly.` };
   }
+  if (explicitProblem) return { url: null, source: null, problem: explicitProblem };
   return {
     url: null,
     source: null,

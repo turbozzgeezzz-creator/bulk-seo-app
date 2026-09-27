@@ -48,3 +48,13 @@ BulkFlow uses Shopify-managed installation with token exchange, so the scopes th
 ## Background jobs on Vercel
 
 Functions freeze once they respond, so bulk jobs run in chunks under `waitUntil`, and each chunk hands off to the next through a signed request to `/internal/jobs/:id/continue` on the production domain. The job page's 2-second poll also nudges the job. If Deployment Protection is extended to the production domain, the hand-off is refused (logged as HTTP 401/403) and jobs only advance while their page is open.
+
+## Troubleshooting: merchants see Vercel's "You Need Access" page
+
+Cause: Shopify is sending merchants to a **per-deployment** address (like `bulk-seo-fuuf3pnyt-turbozzgeezzz-3546s-projects.vercel.app`) instead of the production domain. Every deployment gets one of these; Vercel's default Deployment Protection puts all of them behind a Vercel login. It works for you because you're logged in to Vercel; merchants aren't.
+
+1. Find the production domain: Vercel → project → **Settings → Domains** (the one marked Production). Open `https://<that-domain>/healthz`; its `shopifyPartnerDashboardShouldHave` block lists every value below, already filled in.
+2. Shopify Partner / Dev Dashboard → BulkFlow → **Configuration** (or **Versions → Create version**): set **App URL** and **Allowed redirection URL(s)** to those values, then **release** the version. Unreleased changes aren't used.
+3. Vercel → **Settings → Environment Variables**: `SHOPIFY_APP_URL` must be the production domain, or deleted (the app then uses the production domain automatically). Since this commit, a per-deployment value is ignored and reported on `/healthz` as `appUrlProblem`.
+4. Vercel → **Settings → Deployment Protection → Vercel Authentication**: must be **Standard Protection** (or off). "All Deployments" also locks the production domain, which blocks merchants and Shopify's webhooks. Password Protection and Trusted IPs must be off.
+5. Test from a private/incognito window, not logged in to Vercel: open `https://<production-domain>/healthz` (you should see JSON, not a Vercel page), then install on the dev store.
