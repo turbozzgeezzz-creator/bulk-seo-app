@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { useLoaderData, useRevalidator } from "react-router";
+import { Link, useLoaderData, useRevalidator } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
@@ -106,9 +106,9 @@ export default function Dashboard() {
               ))}
             </div>
             <div style={{ marginTop: 8 }}>
-              <a className={ui.link} href="/app/jobs">
+              <Link className={ui.link} to="/app/jobs">
                 View all jobs →
-              </a>
+              </Link>
             </div>
           </>
         )}

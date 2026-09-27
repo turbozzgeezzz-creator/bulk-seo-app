@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Link } from "react-router";
 import styles from "./app.module.css";
 import { useMounted, useTweened } from "./hooks";
 import { IAlert, IArrow, ICheck, IImage, ISearch, IShield, ISkip, IStack, IStop } from "./icons";
@@ -100,12 +101,12 @@ export function Hero({ firstRun }: { firstRun: boolean }) {
             : "Run a job whenever you add products. By default BulkFlow only fills in what's missing, so anything you've written yourself stays exactly as it is."}
         </p>
         <div className={styles.heroActions}>
-          <a className={styles.heroButton} href="/app/new">
+          <Link className={styles.heroButton} to="/app/new">
             {firstRun ? "Start your first job" : "Start a new job"} <IArrow />
-          </a>
-          <a className={styles.heroLink} href="/app/jobs">
+          </Link>
+          <Link className={styles.heroLink} to="/app/jobs">
             View job history
-          </a>
+          </Link>
         </div>
         {firstRun && (
           <ol className={styles.steps}>
@@ -147,7 +148,7 @@ export function StatTile({ icon, tone = "brand", label, value: raw, hint }: { ic
 
 export function ToolTile({ type }: { type: "ALT_TEXT" | "META" }) {
   return (
-    <a className={styles.tool} href={`/app/new?type=${type}`}>
+    <Link className={styles.tool} to={`/app/new?type=${type}`}>
       <span className={styles.toolIcon}>
         <TypeIcon type={type} size={20} />
       </span>
@@ -164,7 +165,7 @@ export function ToolTile({ type }: { type: "ALT_TEXT" | "META" }) {
           Set up job <IArrow size={14} />
         </span>
       </span>
-    </a>
+    </Link>
   );
 }
 
@@ -217,7 +218,7 @@ export function JobRow({ job, badge }: { job: JobLike; badge: ReactNode }) {
       ? "Nothing needed updating"
       : `${job.succeeded.toLocaleString()} updated${job.failed ? ` · ${job.failed.toLocaleString()} failed` : ""}${job.skipped ? ` · ${job.skipped.toLocaleString()} skipped` : ""}`;
   return (
-    <a className={styles.jobRow} href={`/app/jobs/${job.id}`}>
+    <Link className={styles.jobRow} to={`/app/jobs/${job.id}`}>
       <span className={styles.jobIcon}>
         <TypeIcon type={job.type} />
       </span>
@@ -236,7 +237,7 @@ export function JobRow({ job, badge }: { job: JobLike; badge: ReactNode }) {
         <MiniBar job={job} />
       </span>
       <span className={styles.jobBadge}>{badge}</span>
-    </a>
+    </Link>
   );
 }
 
