@@ -6,10 +6,23 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { ACTIVE_STATUSES, cancelJob, retryFailedItems } from "../lib/jobs/runner.server";
 import { kickJob } from "../lib/jobs/worker.server";
-import { JOB_TYPE_LABEL, MODE_LABEL, STATUS_DISPLAY, unitFor } from "../components/jobDisplay";
-import { JobProgress, fadeIn } from "../components/JobProgress";
-
-const POLL_MS = 2000;
+import { JOB_TYPE_LABEL, unitFor } from "../components/jobDisplay";
+import {
+  ActivityFeed,
+  Diff,
+  LivePanel,
+  OutcomeHeader,
+  POLL_MS,
+  ReasonText,
+  ResultStats,
+  SectionHead,
+  StatTile,
+  Thumb,
+  isActive,
+  productAdminUrl,
+  ui,
+} from "../components/app/AppUi";
+import { IAlert, ICheck, ISkip } from "../components/app/icons";
 
 function parseJson(value: string | null): unknown {
   if (!value) return null;
@@ -18,13 +31,6 @@ function parseJson(value: string | null): unknown {
   } catch {
     return value;
   }
-}
-
-function formatValue(v: unknown): string {
-  if (v == null || v === "") return "(blank)";
-  if (typeof v === "string") return v;
-  const seo = v as { title?: string | null; description?: string | null };
-  return `Title: ${seo.title || "(blank)"}\nDescription: ${seo.description || "(blank)"}`;
 }
 
 export const loader = async ({ request, params }: LoaderFunctionArgs) => {
@@ -43,11 +49,24 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
     prisma.bulkJobItem.findMany({ where: { jobId: job.id, status: "PENDING", attempts: { gt: 0 } }, orderBy: { updatedAt: "desc" }, take: 20 }),
   ]);
 
+  // Items finished since roughly the previous poll get the feed's entrance
+  // highlight. Decided here, not in the browser, so rendering stays pure.
+  const freshSince = Date.now() - POLL_MS * 1.5;
+
   return {
     job,
-    failures: failures.map((f) => ({ id: f.id, label: f.label, productId: f.productId, error: f.error })),
-    updates: updates.map((u) => ({ id: u.id, label: u.label, before: parseJson(u.before), after: parseJson(u.after) })),
-    flagged: flagged.map((f) => ({ id: f.id, label: f.label, productId: f.productId, note: f.note })),
+    failures: failures.map((f) => ({ id: f.id, label: f.label, productId: f.productId, imageUrl: f.imageUrl, error: f.error })),
+    updates: updates.map((u) => ({
+      id: u.id,
+      label: u.label,
+      productId: u.productId,
+      imageUrl: u.imageUrl,
+      before: parseJson(u.before),
+      after: parseJson(u.after),
+      updatedAt: u.updatedAt,
+      fresh: u.updatedAt.getTime() > freshSince,
+    })),
+    flagged: flagged.map((f) => ({ id: f.id, label: f.label, productId: f.productId, imageUrl: f.imageUrl, note: f.note })),
     retrying: pending.map((p) => ({ id: p.id, label: p.label, error: p.error, attempts: p.attempts })),
   };
 };
@@ -68,15 +87,12 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
   return { error: "Unknown action." };
 };
 
-function productAdminUrl(productGid: string) {
-  return `shopify://admin/products/${productGid.split("/").pop()}`;
-}
-
 export default function JobPage() {
   const { job, failures, updates, flagged, retrying } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const revalidator = useRevalidator();
-  const active = job.status === "SCANNING" || job.status === "RUNNING";
+  const active = isActive(job.status);
+  const busyIntent = fetcher.state !== "idle" ? fetcher.formData?.get("intent") : null;
 
   useEffect(() => {
     if (!active) return;
@@ -86,163 +102,178 @@ export default function JobPage() {
     return () => clearInterval(t);
   }, [active, revalidator]);
 
-  const status = STATUS_DISPLAY[job.status] ?? { label: job.status, tone: "neutral" as const };
-  const unit = unitFor(job.type, job.total);
-  const alreadyDone = job.scanned - job.total;
+  const error = fetcher.data && "error" in fetcher.data ? fetcher.data.error : null;
+  const retryButton =
+    !active && job.failed > 0 ? (
+      <s-button variant="primary" loading={busyIntent === "retry-failed" || undefined} onClick={() => fetcher.submit({ intent: "retry-failed" }, { method: "POST" })}>
+        Retry {job.failed.toLocaleString()} failed {unitFor(job.type, job.failed)}
+      </s-button>
+    ) : null;
 
   return (
     <s-page heading={JOB_TYPE_LABEL[job.type]}>
+      {/* ---------- Header: live progress, or the outcome ---------- */}
       <s-section>
-        <s-stack direction="block" gap="base">
-          <s-stack direction="inline" gap="small-200">
-            <s-badge tone={status.tone}>{status.label}</s-badge>
-            <s-text color="subdued">{MODE_LABEL[job.mode]}</s-text>
-          </s-stack>
+        {/* Keyed by active/finished so the switch to the outcome view fades in once. */}
+        <div key={active ? "live" : "done"} className={ui.fadeIn}>
+          <s-stack direction="block" gap="base">
+            {active ? <LivePanel job={job} /> : <OutcomeHeader job={job} />}
 
-          <JobProgress {...job} />
-          {job.scanComplete && job.mode === "ONLY_MISSING" && alreadyDone > 0 && (
-            <s-text color="subdued">
-              {alreadyDone.toLocaleString()} {unitFor(job.type, alreadyDone)} already had values and were left alone.
-            </s-text>
-          )}
-
-          {/* Keyed by status so each outcome fades in once when the job reaches it. */}
-          <div key={job.status} className={fadeIn}>
             {job.status === "FAILED" && job.error && (
-              <s-banner tone="critical" heading="This job stopped">
+              <s-banner tone="critical" heading="Why it stopped">
                 {job.error}
               </s-banner>
             )}
             {job.status === "COMPLETED" && job.total === 0 && (
               <s-banner tone="success" heading="Nothing to do">
-                Every {job.type === "ALT_TEXT" ? "image" : "product"} already has a value.
-              </s-banner>
-            )}
-            {job.status === "COMPLETED" && job.total > 0 && (
-              <s-banner tone="success" heading="All done">
-                {job.succeeded.toLocaleString()} {unitFor(job.type, job.succeeded)} updated and verified in your store
-                {job.skipped > 0 ? `; ${job.skipped.toLocaleString()} skipped (details below)` : ""}.
-              </s-banner>
-            )}
-            {job.status === "COMPLETED_WITH_ERRORS" && (
-              <s-banner tone="warning" heading="Finished, with some items that need attention">
-                {job.succeeded.toLocaleString()} updated and verified. {job.failed.toLocaleString()} couldn&apos;t be updated; each one is listed
-                below with the reason, and you can retry them in one click.
+                Every {job.type === "ALT_TEXT" ? "image" : "product"} already has a value, so nothing was changed.
               </s-banner>
             )}
             {job.status === "CANCELLED" && (
-              <s-banner tone="info" heading="Job stopped">
-                Stopped after {job.processed.toLocaleString()} of {job.total.toLocaleString()} {unit}. Everything already updated stays updated.
-              </s-banner>
+              <s-banner tone="info">Everything updated before you stopped the job stays updated. Start a new job any time to pick up the rest.</s-banner>
             )}
-          </div>
-          {fetcher.data && "error" in fetcher.data && fetcher.data.error && (
-            <div className={fadeIn}>
-              <s-banner tone="critical">{fetcher.data.error}</s-banner>
-            </div>
-          )}
+            {error && <s-banner tone="critical">{error}</s-banner>}
 
-          <s-stack direction="inline" gap="base">
-            {active && (
-              <s-button
-                tone="critical"
-                variant="secondary"
-                loading={(fetcher.state !== "idle" && fetcher.formData?.get("intent") === "cancel") || undefined}
-                onClick={() => fetcher.submit({ intent: "cancel" }, { method: "POST" })}
-              >
-                Stop job
+            <s-stack direction="inline" gap="base">
+              {active && (
+                <s-button tone="critical" variant="secondary" loading={busyIntent === "cancel" || undefined} onClick={() => fetcher.submit({ intent: "cancel" }, { method: "POST" })}>
+                  Stop job
+                </s-button>
+              )}
+              {retryButton}
+              {!active && (
+                <s-button variant={retryButton ? "secondary" : "primary"} href="/app/new">
+                  Start another job
+                </s-button>
+              )}
+              <s-button variant="tertiary" href="/app">
+                Back to dashboard
               </s-button>
-            )}
-            {!active && job.failed > 0 && (
-              <s-button
-                variant="primary"
-                loading={(fetcher.state !== "idle" && fetcher.formData?.get("intent") === "retry-failed") || undefined}
-                onClick={() => fetcher.submit({ intent: "retry-failed" }, { method: "POST" })}
-              >
-                Retry {job.failed} failed {unitFor(job.type, job.failed)}
-              </s-button>
-            )}
-            <s-button href="/app" variant="tertiary">
-              Back
-            </s-button>
+            </s-stack>
           </s-stack>
-        </s-stack>
+        </div>
       </s-section>
 
-      {retrying.length > 0 && active && (
-        <s-section heading="Retrying">
-          <s-paragraph>These hit a temporary problem and will be tried again automatically.</s-paragraph>
-          <s-unordered-list>
-            {retrying.map((r) => (
-              <s-list-item key={r.id}>
-                {r.label}: {r.error} (attempt {r.attempts})
-              </s-list-item>
-            ))}
-          </s-unordered-list>
+      {/* ---------- Counts ---------- */}
+      <div style={{ marginBottom: 16 }}>
+        {active ? (
+          <div className={ui.stats}>
+            <StatTile icon={<ICheck size={14} />} tone="ok" label="Updated & verified" value={job.succeeded} />
+            <StatTile icon={<IAlert size={14} />} tone={job.failed ? "warn" : "muted"} label="Need attention" value={job.failed} />
+            <StatTile icon={<ISkip size={14} />} tone="muted" label="Skipped" value={job.skipped} />
+          </div>
+        ) : (
+          job.total > 0 && <ResultStats job={job} />
+        )}
+      </div>
+
+      {/* ---------- Live feed ---------- */}
+      {active && (
+        <s-section>
+          <SectionHead title="Happening now" />
+          {updates.length > 0 ? (
+            <ActivityFeed items={updates.slice(0, 8)} />
+          ) : (
+            <s-text color="subdued">
+              {job.status === "SCANNING"
+                ? "Finding the items that need work. The first results appear here within a few seconds."
+                : "Writing the first values. They appear here as soon as Shopify confirms them."}
+            </s-text>
+          )}
         </s-section>
       )}
 
+      {active && retrying.length > 0 && (
+        <s-section>
+          <SectionHead title="Retrying automatically" count={retrying.length} />
+          <s-text color="subdued">These hit a temporary problem and will be tried again shortly. Nothing to do.</s-text>
+          <ul className={ui.rows} style={{ marginTop: 8 }}>
+            {retrying.map((r) => (
+              <li key={r.id} className={ui.resultRow} style={{ gridTemplateColumns: "1fr auto" }}>
+                <span>
+                  <span className={ui.resultName}>{r.label}</span>
+                  <div className={ui.note} style={{ color: "var(--bf-muted)" }}>
+                    {r.error}
+                  </div>
+                </span>
+                <s-badge>Attempt {r.attempts}</s-badge>
+              </li>
+            ))}
+          </ul>
+        </s-section>
+      )}
+
+      {/* ---------- Results ---------- */}
       {failures.length > 0 && (
-        <s-section heading={`Couldn't update (${job.failed})`}>
-          <s-table>
-            <s-table-header-row>
-              <s-table-header listSlot="primary">Item</s-table-header>
-              <s-table-header listSlot="labeled">Reason</s-table-header>
-            </s-table-header-row>
-            <s-table-body>
-              {failures.map((f) => (
-                <s-table-row key={f.id}>
-                  <s-table-cell>
-                    <s-link href={productAdminUrl(f.productId)} target="_blank">
-                      {f.label}
-                    </s-link>
-                  </s-table-cell>
-                  <s-table-cell>{f.error}</s-table-cell>
-                </s-table-row>
-              ))}
-            </s-table-body>
-          </s-table>
+        <s-section>
+          <SectionHead title="Needs attention" count={job.failed} bad />
+          <ul className={ui.rows}>
+            {failures.map((f) => (
+              <li key={f.id} className={ui.resultRow}>
+                <Thumb src={f.imageUrl} alt={f.label} />
+                <span>
+                  <span className={ui.resultName}>{f.label}</span>
+                  <ReasonText>{f.error}</ReasonText>
+                </span>
+                <s-link href={productAdminUrl(f.productId)} target="_blank">
+                  Open product
+                </s-link>
+              </li>
+            ))}
+          </ul>
+          {job.failed > failures.length && (
+            <s-text color="subdued">
+              Showing the latest {failures.length} of {job.failed.toLocaleString()}.{active ? "" : " Retrying includes all of them."}
+            </s-text>
+          )}
         </s-section>
       )}
 
       {flagged.length > 0 && (
-        <s-section heading="Photos that may not match their product">
-          <s-paragraph>Alt text was still written for these, describing what the photo shows. You may want to check the image is on the right product.</s-paragraph>
-          <s-unordered-list>
+        <s-section>
+          <SectionHead title="Photos that may not match their product" count={flagged.length} />
+          <s-text color="subdued">Alt text was still written, describing what each photo actually shows. Worth a quick look in case an image is on the wrong product.</s-text>
+          <ul className={ui.rows} style={{ marginTop: 8 }}>
             {flagged.map((f) => (
-              <s-list-item key={f.id}>
+              <li key={f.id} className={ui.resultRow}>
+                <Thumb src={f.imageUrl} alt={f.label} />
+                <span>
+                  <span className={ui.resultName}>{f.label}</span>
+                  <div className={ui.note}>{f.note}</div>
+                </span>
                 <s-link href={productAdminUrl(f.productId)} target="_blank">
-                  {f.label}
+                  Open product
                 </s-link>
-                : {f.note}
-              </s-list-item>
+              </li>
             ))}
-          </s-unordered-list>
+          </ul>
         </s-section>
       )}
 
-      {updates.length > 0 && (
-        <s-section heading="Latest updates">
-          <s-table>
-            <s-table-header-row>
-              <s-table-header listSlot="primary">Item</s-table-header>
-              <s-table-header listSlot="labeled">Before</s-table-header>
-              <s-table-header listSlot="labeled">After</s-table-header>
-            </s-table-header-row>
-            <s-table-body>
-              {updates.map((u) => (
-                <s-table-row key={u.id}>
-                  <s-table-cell>{u.label}</s-table-cell>
-                  <s-table-cell>
-                    <span style={{ whiteSpace: "pre-line" }}>{formatValue(u.before)}</span>
-                  </s-table-cell>
-                  <s-table-cell>
-                    <span style={{ whiteSpace: "pre-line" }}>{formatValue(u.after)}</span>
-                  </s-table-cell>
-                </s-table-row>
-              ))}
-            </s-table-body>
-          </s-table>
+      {!active && updates.length > 0 && (
+        <s-section>
+          <SectionHead title="Changes" count={job.succeeded} />
+          <ul className={ui.rows}>
+            {updates.map((u) => (
+              <li key={u.id} className={ui.resultRow}>
+                <Thumb src={u.imageUrl} alt={u.label} />
+                <span style={{ minWidth: 0 }}>
+                  <span className={ui.resultName}>{u.label}</span>
+                  <Diff before={u.before} after={u.after} />
+                </span>
+                <s-link href={productAdminUrl(u.productId)} target="_blank">
+                  Open product
+                </s-link>
+              </li>
+            ))}
+          </ul>
+          {job.succeeded > updates.length && (
+            <div style={{ marginTop: 8 }}>
+              <s-text color="subdued">
+                Showing the {updates.length} most recent of {job.succeeded.toLocaleString()} changes.
+              </s-text>
+            </div>
+          )}
         </s-section>
       )}
     </s-page>

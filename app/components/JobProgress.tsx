@@ -145,20 +145,6 @@ export function JobProgress(p: JobProgressProps) {
   );
 }
 
-export function BrandHeader() {
-  return (
-    <div className={styles.brandHeader}>
-      <img className={styles.brandMark} src="/brand/bulkflow-mark.png" alt="" width={40} height={32} />
-      <div>
-        <div className={styles.brandName}>
-          Bulk<span className={styles.brandFlow}>Flow</span>
-        </div>
-        <div className={styles.brandSub}>Alt text and meta tags for your whole catalog</div>
-      </div>
-    </div>
-  );
-}
-
 export function EmptyState({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div className={styles.empty}>
