@@ -7,7 +7,7 @@ import prisma from "../db.server";
 import { ACTIVE_STATUSES, cancelJob, retryFailedItems } from "../lib/jobs/runner.server";
 import { kickJob } from "../lib/jobs/worker.server";
 import { JOB_TYPE_LABEL, MODE_LABEL, STATUS_DISPLAY, unitFor } from "../components/jobDisplay";
-import { ProgressBar } from "../components/ProgressBar";
+import { JobProgress, fadeIn } from "../components/JobProgress";
 
 const POLL_MS = 2000;
 
@@ -99,37 +99,66 @@ export default function JobPage() {
             <s-text color="subdued">{MODE_LABEL[job.mode]}</s-text>
           </s-stack>
 
-          {job.status === "SCANNING" ? (
-            <s-text>
-              Scanning your catalog… {job.scanned} {unitFor(job.type, job.scanned)} checked, {job.total} need work so far.
+          <JobProgress {...job} />
+          {job.scanComplete && job.mode === "ONLY_MISSING" && alreadyDone > 0 && (
+            <s-text color="subdued">
+              {alreadyDone.toLocaleString()} {unitFor(job.type, alreadyDone)} already had values and were left alone.
             </s-text>
-          ) : (
-            <s-heading>
-              {job.processed} of {job.total} {unit} processed
-            </s-heading>
           )}
-          <ProgressBar value={job.processed} max={Math.max(job.total, 1)} label="Job progress" />
-          <s-text>
-            {job.succeeded} updated · {job.failed} failed · {job.skipped} skipped
-            {job.scanComplete && job.mode === "ONLY_MISSING" && alreadyDone > 0
-              ? ` · ${alreadyDone} ${unitFor(job.type, alreadyDone)} already had values and were left alone`
-              : ""}
-          </s-text>
 
-          {job.status === "FAILED" && job.error && <s-banner tone="critical" heading="This job stopped">{job.error}</s-banner>}
-          {job.status === "COMPLETED" && job.total === 0 && (
-            <s-banner tone="success">Nothing to do: every {job.type === "ALT_TEXT" ? "image" : "product"} already has a value.</s-banner>
+          {/* Keyed by status so each outcome fades in once when the job reaches it. */}
+          <div key={job.status} className={fadeIn}>
+            {job.status === "FAILED" && job.error && (
+              <s-banner tone="critical" heading="This job stopped">
+                {job.error}
+              </s-banner>
+            )}
+            {job.status === "COMPLETED" && job.total === 0 && (
+              <s-banner tone="success" heading="Nothing to do">
+                Every {job.type === "ALT_TEXT" ? "image" : "product"} already has a value.
+              </s-banner>
+            )}
+            {job.status === "COMPLETED" && job.total > 0 && (
+              <s-banner tone="success" heading="All done">
+                {job.succeeded.toLocaleString()} {unitFor(job.type, job.succeeded)} updated and verified in your store
+                {job.skipped > 0 ? `; ${job.skipped.toLocaleString()} skipped (details below)` : ""}.
+              </s-banner>
+            )}
+            {job.status === "COMPLETED_WITH_ERRORS" && (
+              <s-banner tone="warning" heading="Finished, with some items that need attention">
+                {job.succeeded.toLocaleString()} updated and verified. {job.failed.toLocaleString()} couldn&apos;t be updated; each one is listed
+                below with the reason, and you can retry them in one click.
+              </s-banner>
+            )}
+            {job.status === "CANCELLED" && (
+              <s-banner tone="info" heading="Job stopped">
+                Stopped after {job.processed.toLocaleString()} of {job.total.toLocaleString()} {unit}. Everything already updated stays updated.
+              </s-banner>
+            )}
+          </div>
+          {fetcher.data && "error" in fetcher.data && fetcher.data.error && (
+            <div className={fadeIn}>
+              <s-banner tone="critical">{fetcher.data.error}</s-banner>
+            </div>
           )}
-          {fetcher.data && "error" in fetcher.data && fetcher.data.error && <s-banner tone="critical">{fetcher.data.error}</s-banner>}
 
           <s-stack direction="inline" gap="base">
             {active && (
-              <s-button tone="critical" variant="secondary" onClick={() => fetcher.submit({ intent: "cancel" }, { method: "POST" })}>
+              <s-button
+                tone="critical"
+                variant="secondary"
+                loading={(fetcher.state !== "idle" && fetcher.formData?.get("intent") === "cancel") || undefined}
+                onClick={() => fetcher.submit({ intent: "cancel" }, { method: "POST" })}
+              >
                 Stop job
               </s-button>
             )}
             {!active && job.failed > 0 && (
-              <s-button variant="primary" onClick={() => fetcher.submit({ intent: "retry-failed" }, { method: "POST" })}>
+              <s-button
+                variant="primary"
+                loading={(fetcher.state !== "idle" && fetcher.formData?.get("intent") === "retry-failed") || undefined}
+                onClick={() => fetcher.submit({ intent: "retry-failed" }, { method: "POST" })}
+              >
                 Retry {job.failed} failed {unitFor(job.type, job.failed)}
               </s-button>
             )}

@@ -4,6 +4,7 @@ import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { JOB_TYPE_LABEL, MODE_LABEL, STATUS_DISPLAY } from "../components/jobDisplay";
+import { EmptyState } from "../components/JobProgress";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -17,7 +18,10 @@ export default function Jobs() {
     <s-page heading="Job history">
       <s-section>
         {jobs.length === 0 ? (
-          <s-paragraph>No jobs yet.</s-paragraph>
+          <EmptyState title="Your job history will appear here">
+            Every bulk run is kept with its before and after values, so you can always see exactly what changed.{" "}
+            <s-link href="/app">Start your first job</s-link>
+          </EmptyState>
         ) : (
           <s-table>
             <s-table-header-row>

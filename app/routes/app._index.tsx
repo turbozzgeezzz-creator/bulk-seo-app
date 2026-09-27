@@ -6,8 +6,8 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { ACTIVE_STATUSES, createJob } from "../lib/jobs/runner.server";
 import { kickJob } from "../lib/jobs/worker.server";
-import { JOB_TYPE_LABEL, MODE_LABEL, STATUS_DISPLAY, unitFor } from "../components/jobDisplay";
-import { ProgressBar } from "../components/ProgressBar";
+import { JOB_TYPE_LABEL, MODE_LABEL, STATUS_DISPLAY } from "../components/jobDisplay";
+import { BrandHeader, EmptyState, JobProgress } from "../components/JobProgress";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
@@ -56,12 +56,7 @@ function JobCard({
         {fetcher.data?.error && <s-banner tone="critical">{fetcher.data.error}</s-banner>}
         {activeJob ? (
           <s-stack direction="block" gap="small-200">
-            <s-text>
-              {activeJob.status === "SCANNING"
-                ? `Scanning your catalog… ${activeJob.scanned} ${unitFor(type, activeJob.scanned)} checked so far.`
-                : `${activeJob.processed} of ${activeJob.total} ${unitFor(type, activeJob.total)} processed.`}
-            </s-text>
-            <ProgressBar value={activeJob.processed} max={Math.max(activeJob.total, 1)} label={`${JOB_TYPE_LABEL[type]} progress`} />
+            <JobProgress compact {...activeJob} />
             <s-button href={`/app/jobs/${activeJob.id}`}>View progress</s-button>
           </s-stack>
         ) : (
@@ -97,7 +92,7 @@ export default function Index() {
   return (
     <s-page heading="BulkFlow">
       <s-box paddingBlockEnd="base">
-        <img src="/brand/bulkflow-wordmark.png" alt="BulkFlow" width={240} height={56} style={{ display: "block", height: "auto" }} />
+        <BrandHeader />
       </s-box>
       <JobCard
         type="ALT_TEXT"
@@ -112,7 +107,10 @@ export default function Index() {
 
       <s-section heading="Recent jobs">
         {recent.length === 0 ? (
-          <s-paragraph>No jobs yet.</s-paragraph>
+          <EmptyState title="No jobs yet">
+            Start with &ldquo;Fill in missing alt text&rdquo; above. BulkFlow only touches images that have none, and you can watch every
+            product as it&apos;s done.
+          </EmptyState>
         ) : (
           <s-table>
             <s-table-header-row>

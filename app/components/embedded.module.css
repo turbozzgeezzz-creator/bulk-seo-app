@@ -1,0 +1,284 @@
+/*
+ * The few custom elements inside the embedded app. Everything else is Polaris
+ * web components. Polaris in Shopify admin doesn't expose an app-level accent
+ * or theme colour, so BulkFlow's blue appears only here: the progress
+ * visual, the brand header and the empty state. Text uses the admin's own
+ * colours and font so it still reads as part of Shopify admin.
+ */
+
+.brandHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.brandMark {
+  width: 40px;
+  height: auto;
+  display: block;
+}
+
+.brandName {
+  font-weight: 650;
+  font-size: 15px;
+  letter-spacing: -0.01em;
+}
+
+.brandFlow {
+  background: linear-gradient(100deg, #0b3ee6, #1673ff 50%, #29b6ff);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.brandSub {
+  color: var(--p-color-text-secondary, #616161);
+  font-size: 13px;
+}
+
+/* ---------- Job progress ---------- */
+
+.progress {
+  display: grid;
+  gap: 10px;
+}
+
+.progressTop {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.count {
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.countSmall {
+  font-size: 20px;
+}
+
+.countOf {
+  margin-left: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--p-color-text-secondary, #616161);
+  letter-spacing: 0;
+}
+
+.meta {
+  display: flex;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--p-color-text-secondary, #616161);
+  font-variant-numeric: tabular-nums;
+}
+
+.metaStrong {
+  color: var(--p-color-text, #303030);
+  font-weight: 600;
+}
+
+.track {
+  position: relative;
+  display: flex;
+  height: 12px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--p-color-bg-fill-tertiary, #e3e3e3);
+}
+
+.trackSmall {
+  height: 8px;
+}
+
+/* Segments grow with width; three tiny elements, so the layout cost is
+   negligible, and only on each 2 s poll. */
+.seg {
+  height: 100%;
+  transition: width 700ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.segOk {
+  background: linear-gradient(90deg, #0b3ee6, #1673ff 60%, #29b6ff);
+}
+
+.segFail {
+  background: var(--p-color-bg-fill-critical, #e51c00);
+}
+
+.segSkip {
+  background: var(--p-color-bg-fill-disabled, #b5b5b5);
+}
+
+/* Moving highlight across the completed part while a job runs
+   (transform-only, clipped to the filled segment). */
+.running .segOk {
+  position: relative;
+  overflow: hidden;
+}
+
+.running .segOk::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.5), transparent);
+  animation: sweep 1.8s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes sweep {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(230%); }
+}
+
+/* Catalog scan: total not known yet, so an indeterminate bar. */
+.scanning .track::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 35%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(22, 115, 255, 0), #1673ff, rgba(41, 182, 255, 0));
+  animation: scan 1.4s ease-in-out infinite;
+}
+
+@keyframes scan {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(290%); }
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 13px;
+  color: var(--p-color-text-secondary, #616161);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.done {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--p-color-text-success, #0c5132);
+  font-weight: 600;
+  font-size: 13px;
+  animation: pop 500ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.checkCircle {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--p-color-bg-fill-success, #29845a);
+  color: #fff;
+}
+
+.checkPath {
+  stroke-dasharray: 20;
+  stroke-dashoffset: 20;
+  animation: draw 450ms 150ms ease-out forwards;
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: scale(0.85); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes draw {
+  to { stroke-dashoffset: 0; }
+}
+
+/* Soft entrance when a state block (banner, result list) appears. */
+.fadeIn {
+  animation: fade-in 360ms ease-out both;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- Empty state ---------- */
+
+.empty {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 24px 16px 12px;
+}
+
+.emptyArt {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  display: grid;
+  place-items: center;
+  border-radius: 20px;
+  background: radial-gradient(circle at 30% 20%, rgba(41, 182, 255, 0.25), rgba(22, 115, 255, 0.08) 70%);
+  margin-bottom: 6px;
+}
+
+.emptyArt img {
+  width: 44px;
+  height: auto;
+  animation: float 5s ease-in-out infinite;
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+.emptyTitle {
+  font-weight: 650;
+  font-size: 15px;
+}
+
+.emptyText {
+  color: var(--p-color-text-secondary, #616161);
+  font-size: 13px;
+  max-width: 36em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .seg,
+  .running .segOk::after,
+  .scanning .track::before,
+  .done,
+  .checkPath,
+  .fadeIn,
+  .emptyArt img {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .checkPath {
+    stroke-dashoffset: 0;
+  }
+}
