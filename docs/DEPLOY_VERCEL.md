@@ -15,9 +15,9 @@ Vercel project → **Settings → Environment Variables** (Production):
 | `SHOPIFY_API_KEY` | `112d8cc57cd35b3baa6d4718b23c7f02` (the Client ID) |
 | `SHOPIFY_API_SECRET` | the app's current Client Secret (mark as Sensitive) |
 | `ANTHROPIC_API_KEY` | needed for generation jobs |
-| `SHOPIFY_APP_URL` | optional. Defaults to Vercel's production domain (`VERCEL_PROJECT_PRODUCTION_URL`); set it only for a custom domain |
+| `SHOPIFY_APP_URL` | `https://<production-domain>` (from Settings → Domains). If unset, the app falls back to Vercel's `VERCEL_PROJECT_PRODUCTION_URL`, but setting it explicitly is recommended |
 
-Redeploy after changing variables (Deployments → ⋯ → Redeploy).
+Variables only reach **new** deployments. After changing them, redeploy the **latest** deployment: Deployments → the top entry → ⋯ → Redeploy. Check the commit shown on that entry: "Redeploy" on an older entry rebuilds that older commit's code. `/healthz` shows the `commit` actually running.
 
 ## 3. Check it
 

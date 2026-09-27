@@ -7,8 +7,15 @@ import {
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 import { billingConfig } from "./billing.server";
-import { DEFAULT_SCOPES, configErrorResponse, missingRequiredConfig, resolveAppUrl } from "./config.server";
+import { DEFAULT_SCOPES, buildInfo, configErrorResponse, missingRequiredConfig, resolveAppUrlDetailed } from "./config.server";
 
+const appUrl = resolveAppUrlDetailed();
+const build = buildInfo();
+console.log(
+  `[config] BulkFlow starting: commit ${build.commit ?? "unknown"}, appUrl ${appUrl.url ?? "(none)"} from ${appUrl.source ?? "nowhere"}` +
+    (build.deploymentUrl ? `, served from deployment ${build.deploymentUrl}` : ""),
+);
+if (appUrl.problem) console.error(`[config] ${appUrl.problem}`);
 const missing = missingRequiredConfig();
 if (missing.length) {
   console.error(`[config] BulkFlow is missing required environment variables: ${missing.join(", ")}. Admin pages will return 503 until they are set; see /healthz.`);
@@ -23,7 +30,9 @@ const shopify = shopifyApp({
   apiSecretKey: process.env.SHOPIFY_API_SECRET || "missing-api-secret",
   apiVersion: ApiVersion.October25,
   scopes: (process.env.SCOPES || DEFAULT_SCOPES).split(","),
-  appUrl: resolveAppUrl() ?? PLACEHOLDER_URL,
+  // Never "" or an invalid URL: either would make shopifyApp() throw while the
+  // bundle loads and 500 every page. A missing URL is reported instead (see above).
+  appUrl: appUrl.url || PLACEHOLDER_URL,
   authPathPrefix: "/auth",
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,

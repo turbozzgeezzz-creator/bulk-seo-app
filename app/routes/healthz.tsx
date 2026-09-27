@@ -1,5 +1,5 @@
 import prisma from "../db.server";
-import { checkConfig, resolveAppUrl } from "../config.server";
+import { buildInfo, checkConfig, resolveAppUrlDetailed } from "../config.server";
 
 /**
  * Deployment diagnostics: which settings are present (names only, never
@@ -9,6 +9,7 @@ import { checkConfig, resolveAppUrl } from "../config.server";
  */
 export const loader = async () => {
   const config = checkConfig();
+  const appUrl = resolveAppUrlDetailed();
   let database: { ok: boolean; detail: string };
   if (!process.env.DATABASE_URL) {
     database = { ok: false, detail: "DATABASE_URL is not set." };
@@ -30,8 +31,10 @@ export const loader = async () => {
   const ok = database.ok && config.every((c) => !c.required || c.ok);
   const body = {
     ok,
-    appUrl: resolveAppUrl(),
-    appUrlSource: process.env.SHOPIFY_APP_URL ? "SHOPIFY_APP_URL" : process.env.VERCEL_PROJECT_PRODUCTION_URL ? "VERCEL_PROJECT_PRODUCTION_URL" : null,
+    ...buildInfo(),
+    appUrl: appUrl.url,
+    appUrlSource: appUrl.source,
+    ...(appUrl.problem ? { appUrlProblem: appUrl.problem } : {}),
     config: config.map(({ name, ok, required, hint }) => ({ name, set: ok, required, ...(ok ? {} : { hint }) })),
     database,
   };
