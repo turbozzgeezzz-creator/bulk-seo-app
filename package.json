@@ -21,7 +21,8 @@
     "test": "vitest run",
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate && npm run db:migrate && react-router build",
-    "db:migrate": "node scripts/migrate.mjs"
+    "db:migrate": "node scripts/migrate.mjs",
+    "live-check": "node scripts/live-check.mjs"
   },
   "type": "module",
   "engines": {
@@ -63,6 +64,7 @@
     "eslint-plugin-react": "^7.37.5",
     "eslint-plugin-react-hooks": "^7.0.1",
     "graphql-config": "^5.1.1",
+    "playwright-core": "1.56",
     "prettier": "^3.6.2",
     "typescript": "^5.9.3",
     "vite": "^7.3.1",

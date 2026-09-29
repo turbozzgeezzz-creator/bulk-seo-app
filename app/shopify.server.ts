@@ -146,7 +146,7 @@ function sessionConfigErrorResponse(msg: { title: string; detail: string; fix: s
       headers: { "Content-Type": "application/json" },
     });
   }
-  // An HTML fragment: in a page loader, Shopify's boundary.error renders the
+  // An HTML fragment: in a page loader, the app layout's ErrorBoundary renders the
   // thrown Response's body inside the app layout (see app.tsx ErrorBoundary).
   const html = `<main style="max-width:640px;margin:48px auto;padding:24px;background:#fff;border-radius:12px;box-shadow:0 1px 0 rgba(0,0,0,.07),0 0 0 1px rgba(0,0,0,.06);font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Inter,sans-serif;color:#303030">
 <p style="margin:0 0 4px;font-size:12px;font-weight:600;color:#8e1f0b;letter-spacing:.04em;text-transform:uppercase">BulkFlow can't start</p>

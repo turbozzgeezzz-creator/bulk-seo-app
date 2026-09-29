@@ -32,3 +32,4 @@ pnpm-lock.yaml
 
 # Vercel build output (local builds with VERCEL=1)
 .vercel/
+live-check-out/

@@ -54,7 +54,13 @@ export default function App() {
 // Shopify needs React Router to catch some thrown responses, so that their headers are included in the response.
 export function ErrorBoundary() {
   const error = useRouteError();
-  if (isRouteErrorResponse(error)) return boundary.error(error);
+  // Not boundary.error(): it recognises thrown Responses by class name
+  // ("ErrorResponseImpl"), which the minified browser bundle renames, so in
+  // a real browser it re-threw and every "BulkFlow can't start" page was
+  // replaced by React Router's bare "500" after hydration.
+  if (isRouteErrorResponse(error)) {
+    return <div dangerouslySetInnerHTML={{ __html: typeof error.data === "string" && error.data ? error.data : "Handling response" }} />;
+  }
   // Anything else (a timed-out database query, a Shopify API error) would
   // otherwise fall through to React Router's bare default page. Production
   // builds hide the server's message, so say what to do; the Vercel logs
