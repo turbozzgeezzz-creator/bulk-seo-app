@@ -10,7 +10,7 @@ import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prism
 import prisma from "./db.server";
 import { billingConfig } from "./billing.server";
 import { describeProblem, diagnoseSessionToken, sessionTokenFromRequest } from "./lib/shopify/sessionTokenCheck.server";
-import { BOUNCE_LIMIT, diagnoseLoop, isBounceRedirect, recordBounce } from "./lib/shopify/authLoopGuard.server";
+import { BOUNCE_LIMIT, diagnoseLoop, isBounceRedirect, isNotEmbeddedRedirect, notEmbeddedDiagnosis, recordBounce } from "./lib/shopify/authLoopGuard.server";
 import { DEFAULT_SCOPES, buildInfo, configErrorResponse, missingRequiredConfig, resolveAppUrlDetailed } from "./config.server";
 import { StepTimeoutError, fetchWithTimeout, withDeadline } from "./lib/deadline.server";
 import { type AuthOutcome, libraryLogFunction, recordAuthEvent, withLibraryLogCapture } from "./lib/shopify/authTrace.server";
@@ -169,13 +169,16 @@ async function adminWithGuards(request: Request, trace: { outcome: AuthOutcome; 
     }
     // A redirect to the bounce page is normally one step of sign-in. Many in
     // a row for the same shop is the silent reload loop: stop and explain.
-    if (isBounceRedirect(err)) {
+    const notEmbedded = isNotEmbeddedRedirect(err);
+    if (isBounceRedirect(err) || notEmbedded) {
       const shop = new URL(request.url).searchParams.get("shop");
       if (shop) {
         const count = await recordBounce(prisma, shop).catch(() => 0);
-        trace.notes.push(`sign-in restart ${count} for this shop in the current window`);
+        trace.notes.push(`${notEmbedded ? "sent back to Shopify admin (not embedded)" : "sign-in restart"} ${count} for this shop in the current window`);
         if (count > BOUNCE_LIMIT) {
-          const diagnosis = await diagnoseLoop({
+          const diagnosis = notEmbedded
+            ? notEmbeddedDiagnosis(shop, process.env.SHOPIFY_API_KEY ?? "")
+            : await diagnoseLoop({
             shop,
             sessionToken: found?.token ?? null,
             apiKey: process.env.SHOPIFY_API_KEY ?? "",

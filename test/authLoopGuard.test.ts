@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
 import { PrismaClient } from "@prisma/client";
 import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { BOUNCE_LIMIT, WINDOW_MS, diagnoseLoop, isBounceRedirect, recordBounce } from "../app/lib/shopify/authLoopGuard.server";
+import { BOUNCE_LIMIT, WINDOW_MS, diagnoseLoop, isBounceRedirect, isNotEmbeddedRedirect, recordBounce } from "../app/lib/shopify/authLoopGuard.server";
 
 const KEY = "112d8cc57cd35b3baa6d4718b23c7f02";
 const SECRET = "current-secret";
@@ -86,5 +86,16 @@ describe("diagnoseLoop", () => {
       const d = await diagnoseLoop({ ...base, sessionToken }, f as unknown as typeof fetch);
       expect(JSON.stringify(d)).not.toContain(SECRET);
     }
+  });
+});
+
+describe("isNotEmbeddedRedirect", () => {
+  it("recognises the library sending a non-embedded page load back to Shopify admin", () => {
+    const to = (location: string, status = 302) => new Response(null, { status, headers: { location } });
+    expect(isNotEmbeddedRedirect(to(`https://admin.shopify.com/store/bulkflow-cwopi3ze/apps/${KEY}`))).toBe(true);
+    expect(isNotEmbeddedRedirect(to(`https://${SHOP}/admin/apps/${KEY}`))).toBe(true);
+    expect(isNotEmbeddedRedirect(to("/auth/session-token?shop=x"))).toBe(false);
+    expect(isNotEmbeddedRedirect(to("https://admin.shopify.com/store/x/apps/y", 200))).toBe(false);
+    expect(isNotEmbeddedRedirect(new Error("x"))).toBe(false);
   });
 });

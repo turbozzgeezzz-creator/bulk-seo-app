@@ -31,6 +31,26 @@ export function isBounceRedirect(res: unknown, bouncePath = "/auth/session-token
   return location.startsWith(bouncePath) || location.includes(`${bouncePath}?`);
 }
 
+/**
+ * The library's other restart: a page load without embedded=1 is sent back
+ * to Shopify admin (admin.shopify.com/store/…/apps/<id>). If Shopify has the
+ * app set as not embedded, admin opens it outside the admin again, forever.
+ */
+export function isNotEmbeddedRedirect(res: unknown): res is Response {
+  if (!(res instanceof Response)) return false;
+  if (res.status < 300 || res.status >= 400) return false;
+  const location = res.headers.get("location") ?? "";
+  return /^https:\/\/(admin\.shopify\.com\/store\/[^/]+|[^/]+\/admin)\/apps\//.test(location);
+}
+
+export function notEmbeddedDiagnosis(shop: string, apiKey: string): Diagnosis {
+  return {
+    title: "Shopify has BulkFlow set to open outside the admin",
+    detail: `Shopify keeps opening BulkFlow for ${shop} as a separate page instead of inside Shopify admin, and BulkFlow can only run inside the admin, so each open was sent straight back to the admin and round again. This comes from the released app version's "Embed app in Shopify admin" setting being off (Shopify reports embedded: false for app ${apiKey}).`,
+    fix: 'In the Shopify Dev Dashboard (dev.shopify.com → Apps → BulkFlow → Versions), create a new version with "Embed app in Shopify admin" turned on and the App URL set to this server, then release it. Or run "shopify app deploy" from the project (shopify.app.toml already sets embedded = true). Then open BulkFlow from Apps in Shopify admin again.',
+  };
+}
+
 /** Records one bounce for the shop and returns how many there have been in the current window. */
 export async function recordBounce(prisma: PrismaClient, shop: string, now = new Date()): Promise<number> {
   const existing = await prisma.authBounce.findUnique({ where: { shop } });
