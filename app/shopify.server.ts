@@ -13,6 +13,7 @@ import { describeProblem, diagnoseSessionToken, sessionTokenFromRequest } from "
 import { BOUNCE_LIMIT, diagnoseLoop, isBounceRedirect, recordBounce } from "./lib/shopify/authLoopGuard.server";
 import { DEFAULT_SCOPES, buildInfo, configErrorResponse, missingRequiredConfig, resolveAppUrlDetailed } from "./config.server";
 import { StepTimeoutError, fetchWithTimeout, withDeadline } from "./lib/deadline.server";
+import { type AuthOutcome, libraryLogFunction, recordAuthEvent, withLibraryLogCapture } from "./lib/shopify/authTrace.server";
 
 /**
  * Every request the Shopify library makes (token exchange, token refresh,
@@ -54,9 +55,13 @@ const shopify = shopifyApp({
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
   billing: billingConfig,
-  // SHOPIFY_LOG_LEVEL=debug surfaces the library's auth reasoning (e.g. why a
-  // session token was rejected) in the Vercel logs; normally info.
-  logger: { level: process.env.SHOPIFY_LOG_LEVEL === "debug" ? LogSeverity.Debug : LogSeverity.Info },
+  // The library logs at debug level so each sign-in's reasoning (e.g. why a
+  // session token was rejected) is kept in its trace (authTrace.server.ts);
+  // what's printed to the Vercel logs is info, or debug with SHOPIFY_LOG_LEVEL=debug.
+  logger: {
+    level: LogSeverity.Debug,
+    log: libraryLogFunction(process.env.SHOPIFY_LOG_LEVEL === "debug" ? LogSeverity.Debug : LogSeverity.Info),
+  },
   hooks: {
     afterAuth: async ({ session }) => {
       // One Shop row per installed store; reinstalling clears the uninstall marker.
@@ -84,13 +89,63 @@ export const addDocumentResponseHeaders = shopify.addDocumentResponseHeaders;
  * this server is configured with, stop with a clear error instead of letting
  * the library bounce and reload forever (see sessionTokenCheck.server.ts).
  */
-const admin: typeof shopify.authenticate.admin = async (request) => {
+const admin: typeof shopify.authenticate.admin = (request) =>
+  withLibraryLogCapture(async (lines) => {
+    const started = Date.now();
+    const trace = { outcome: "error" as AuthOutcome, notes: [] as string[] };
+    const shop = shopFromRequest(request);
+    const note = () =>
+      shop
+        ? recordAuthEvent(prisma, {
+            shop,
+            path: new URL(request.url).pathname + (request.headers.get("authorization") ? " (data request)" : " (page load)"),
+            outcome: trace.outcome,
+            ms: Date.now() - started,
+            detail: [`commit ${buildInfo().commit ?? "unknown"}`, ...trace.notes, ...lines],
+          })
+        : Promise.resolve();
+    try {
+      const result = await adminWithGuards(request, trace);
+      trace.outcome = "ok";
+      await note();
+      return result;
+    } catch (err) {
+      if (err instanceof Response) {
+        trace.notes.push(`answered HTTP ${err.status}${err.headers.get("location") ? ` -> ${err.headers.get("location")!.split("?")[0]}` : ""}`);
+        if (trace.outcome === "error") {
+          if (isBounceRedirect(err)) trace.outcome = "bounce";
+          else if ((err as Response).status < 300) trace.outcome = new URL(request.url).pathname.startsWith("/auth/session-token") ? "bounce-page" : "responded";
+        }
+      } else {
+        trace.notes.push(`threw ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`);
+      }
+      await note();
+      throw err;
+    }
+  });
+
+function shopFromRequest(request: Request): string | null {
+  const param = new URL(request.url).searchParams.get("shop");
+  if (param) return param;
+  const token = sessionTokenFromRequest(request)?.token;
+  try {
+    const dest = JSON.parse(Buffer.from(token?.split(".")[1] ?? "", "base64url").toString("utf8")).dest as string;
+    return new URL(dest).hostname;
+  } catch {
+    return null;
+  }
+}
+
+async function adminWithGuards(request: Request, trace: { outcome: AuthOutcome; notes: string[] }) {
   const found = sessionTokenFromRequest(request);
+  trace.notes.push(found ? `session token in ${found.isDocumentRequest ? "id_token param" : "Authorization header"}` : "no session token");
   if (found) {
     const problem = diagnoseSessionToken(found.token, process.env.SHOPIFY_API_KEY, process.env.SHOPIFY_API_SECRET);
     if (problem) {
       const msg = describeProblem(problem, process.env.SHOPIFY_API_KEY ?? "");
       console.error(`[auth] ${msg.title}. ${msg.detail} Fix: ${msg.fix}`);
+      trace.outcome = "config-error";
+      trace.notes.push(msg.title);
       throw sessionConfigErrorResponse(msg, found.isDocumentRequest);
     }
   }
@@ -109,6 +164,7 @@ const admin: typeof shopify.authenticate.admin = async (request) => {
         fix: "Reload the app. If it happens again, check status.shopify.com, then send the Vercel log lines starting with [slow] and [auth] from that minute.",
       };
       console.error(`[auth] ${msg.title}. ${msg.detail}`);
+      trace.outcome = "timeout";
       throw sessionConfigErrorResponse(msg, !request.headers.get("authorization"));
     }
     // A redirect to the bounce page is normally one step of sign-in. Many in
@@ -117,6 +173,7 @@ const admin: typeof shopify.authenticate.admin = async (request) => {
       const shop = new URL(request.url).searchParams.get("shop");
       if (shop) {
         const count = await recordBounce(prisma, shop).catch(() => 0);
+        trace.notes.push(`sign-in restart ${count} for this shop in the current window`);
         if (count > BOUNCE_LIMIT) {
           const diagnosis = await diagnoseLoop({
             shop,
@@ -125,13 +182,15 @@ const admin: typeof shopify.authenticate.admin = async (request) => {
             apiSecret: process.env.SHOPIFY_API_SECRET ?? "",
           });
           console.error(`[auth] Reload loop stopped for ${shop} after ${count} sign-in restarts. ${diagnosis.title}. ${diagnosis.detail} Fix: ${diagnosis.fix}`);
+          trace.outcome = "loop-stopped";
+          trace.notes.push(`${diagnosis.title}. ${diagnosis.detail}`);
           throw sessionConfigErrorResponse(diagnosis, !request.headers.get("authorization"));
         }
       }
     }
     throw err;
   }
-};
+}
 
 function escapeHtml(s: string) {
   return s.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]!);

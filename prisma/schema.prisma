@@ -128,3 +128,17 @@ model AuthBounce {
   windowStart DateTime @default(now())
   updatedAt   DateTime @updatedAt
 }
+
+// One row per embedded sign-in attempt, for diagnosing failed opens after
+// the fact (see app/lib/shopify/authTrace.server.ts). Kept 7 days.
+model AuthEvent {
+  id      Int      @id @default(autoincrement())
+  shop    String
+  at      DateTime @default(now())
+  path    String
+  outcome String
+  ms      Int
+  detail  String   @default("")
+
+  @@index([shop, at])
+}

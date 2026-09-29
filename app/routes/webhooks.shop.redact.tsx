@@ -9,12 +9,13 @@ import db from "../db.server";
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { shop, topic } = await authenticate.webhook(request);
   const [items, jobs, sessions, shops] = await db.$transaction([
-    // (AuthBounce holds only a counter per shop; deleted alongside.)
+    // (AuthBounce holds a counter per shop and AuthEvent its sign-in trace; deleted alongside.)
     db.bulkJobItem.deleteMany({ where: { shop } }),
     db.bulkJob.deleteMany({ where: { shop } }),
     db.session.deleteMany({ where: { shop } }),
     db.shop.deleteMany({ where: { shop } }),
     db.authBounce.deleteMany({ where: { shop } }),
+    db.authEvent.deleteMany({ where: { shop } }),
   ]);
   console.log(
     `Received ${topic} webhook for ${shop}: deleted ${items.count} job items, ${jobs.count} jobs, ${sessions.count} sessions, ${shops.count} shop record.`,

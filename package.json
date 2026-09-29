@@ -22,7 +22,8 @@
     "postinstall": "prisma generate",
     "vercel-build": "prisma generate && npm run db:migrate && react-router build",
     "db:migrate": "node scripts/migrate.mjs",
-    "live-check": "node scripts/live-check.mjs"
+    "live-check": "node scripts/live-check.mjs",
+    "diag": "node scripts/diag.mjs"
   },
   "type": "module",
   "engines": {

@@ -97,14 +97,32 @@ page.on("requestfailed", (r) => {
   requests.push(row);
   log(`${row.method} FAILED ${row.failure} after ${row.ms} ms  ${row.url.slice(0, 140)}`);
 });
+// The app's own documents (the page and any server redirect target), read as
+// they arrive: App Bridge navigates away right after load.
+const documents = [];
+page.on("response", async (r) => {
+  if (!r.request().isNavigationRequest() || r.frame() !== page.mainFrame() || !r.url().startsWith(baseUrl)) return;
+  const entry = { url: r.url(), status: r.status(), html: "" };
+  documents.push(entry);
+  entry.html = await r.text().catch(() => "");
+});
 page.on("console", (m) => log(`console.${m.type()}: ${m.text().slice(0, 300)}`));
 page.on("pageerror", (e) => log(`pageerror: ${e.message.slice(0, 300)}`));
 
 let outcome = "loaded";
+let serverText = "";
 const navStart = Date.now();
 try {
   const res = await page.goto(url, { waitUntil: "load", timeout: 330_000 });
   log(`document HTTP ${res?.status()} in ${Date.now() - navStart} ms`);
+  // Outside Shopify admin, App Bridge moves the window to admin.shopify.com
+  // (login, behind a bot challenge) right after load, so judge the page the
+  // server sent: the final document of the redirect chain, as served.
+  await page.waitForTimeout(500);
+  const doc = documents.filter((d) => d.status < 300 || d.status >= 400).at(-1);
+  const html = doc?.html ?? "";
+  serverText = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
+  log(`served from ${doc ? new URL(doc.url).pathname : "?"} (HTTP ${doc?.status}): ${serverText.slice(0, 300) || "(no text)"}`);
   await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => log("network not idle after 20 s (continuing)"));
 } catch (err) {
   outcome = `navigation failed: ${String(err).split("\n")[0]}`;
@@ -116,12 +134,14 @@ writeFileSync(join(outDir, "page.html"), await page.content().catch(() => ""));
 writeFileSync(join(outDir, "requests.json"), JSON.stringify(requests, null, 2));
 await browser.close();
 
-log(`final URL path: ${new URL(page.url()).pathname}`);
-log(`visible text: ${text.slice(0, 400) || "(none: blank page)"}`);
-const verdict = /BulkFlow can.t start|couldn.t load|Application Error/i.test(text)
+log(`window ended on ${page.url().split("?")[0]} (App Bridge leaves for Shopify admin when not inside it)`);
+log(`visible text there: ${text.slice(0, 200) || "(none)"}`);
+const verdict = /BulkFlow can.t start|couldn.t load|Application Error|Unhandled Thrown/i.test(serverText)
   ? "ERROR PAGE"
-  : text.includes("Dashboard") || text.includes("BulkFlow")
+  : /Give every product the SEO|Start your first job|Running now|Recent jobs/.test(serverText)
     ? "APP LOADED"
-    : "BLANK OR UNKNOWN";
+    : documents.some((d) => d.url.includes("/auth/session-token"))
+      ? "SIGN-IN RESTARTED (bounce page)"
+      : "BLANK OR UNKNOWN";
 log(`RESULT: ${verdict} (${outcome}); outputs in ${outDir}/`);
 process.exit(verdict === "APP LOADED" ? 0 : 1);
