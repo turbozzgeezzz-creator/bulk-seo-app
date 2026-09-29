@@ -117,3 +117,14 @@ model BulkJobItem {
   @@index([jobId, status])
   @@index([shop])
 }
+
+// Counts auth "bounce" redirects per shop in a short window, so a silent
+// embedded reload loop is detected and replaced with a diagnostic page
+// (app/lib/shopify/authLoopGuard.server.ts). Contains no customer data;
+// deleted with the shop on shop/redact.
+model AuthBounce {
+  shop        String   @id
+  count       Int      @default(0)
+  windowStart DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}

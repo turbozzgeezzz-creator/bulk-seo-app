@@ -58,3 +58,18 @@ Cause: Shopify is sending merchants to a **per-deployment** address (like `bulk-
 3. Vercel → **Settings → Environment Variables**: `SHOPIFY_APP_URL` must be the production domain, or deleted (the app then uses the production domain automatically). Since this commit, a per-deployment value is ignored and reported on `/healthz` as `appUrlProblem`.
 4. Vercel → **Settings → Deployment Protection → Vercel Authentication**: must be **Standard Protection** (or off). "All Deployments" also locks the production domain, which blocks merchants and Shopify's webhooks. Password Protection and Trusted IPs must be off.
 5. Test from a private/incognito window, not logged in to Vercel: open `https://<production-domain>/healthz` (you should see JSON, not a Vercel page), then install on the dev store.
+
+## Troubleshooting: blank page that keeps reloading inside Shopify admin
+
+Shopify's library answers every failed sign-in on a page load by fetching a new session token and reloading. If the failure is permanent that loops forever. BulkFlow now stops after a few seconds of this and shows a "BulkFlow can't start" page with the specific reason, also logged in Vercel as `[auth] …`:
+
+| Page says | Meaning | Fix |
+|---|---|---|
+| The server's Client Secret doesn't match this app | `SHOPIFY_API_SECRET` isn't the app's current secret (e.g. it was rotated) | Copy the current Client Secret into Vercel, redeploy |
+| This server is configured for a different Shopify app | `SHOPIFY_API_KEY` isn't the installed app's Client ID | Set Client ID + Secret of the installed app in Vercel, redeploy |
+| Shopify never handed BulkFlow a session token | App Bridge couldn't get a token for the configured Client ID | Compare `clientId` on `/healthz` with the id in the admin URL |
+| Shopify refuses to give BulkFlow access to this store | Token is valid but Shopify rejected the exchange; its exact answer is shown | Release an app version with the scopes and production App URL, then reinstall |
+
+For more detail, set `SHOPIFY_LOG_LEVEL=debug` in Vercel and redeploy: the library's own auth reasoning then appears in the function logs.
+
+If you still see a silent loop with none of these pages, the deployment serving your domain isn't running this code: check the `commit` on `/healthz` and redeploy the newest entry.

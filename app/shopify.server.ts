@@ -2,12 +2,14 @@ import "@shopify/shopify-app-react-router/adapters/node";
 import {
   ApiVersion,
   AppDistribution,
+  LogSeverity,
   shopifyApp,
 } from "@shopify/shopify-app-react-router/server";
 import { PrismaSessionStorage } from "@shopify/shopify-app-session-storage-prisma";
 import prisma from "./db.server";
 import { billingConfig } from "./billing.server";
 import { describeProblem, diagnoseSessionToken, sessionTokenFromRequest } from "./lib/shopify/sessionTokenCheck.server";
+import { BOUNCE_LIMIT, diagnoseLoop, isBounceRedirect, recordBounce } from "./lib/shopify/authLoopGuard.server";
 import { DEFAULT_SCOPES, buildInfo, configErrorResponse, missingRequiredConfig, resolveAppUrlDetailed } from "./config.server";
 
 const appUrl = resolveAppUrlDetailed();
@@ -38,6 +40,9 @@ const shopify = shopifyApp({
   sessionStorage: new PrismaSessionStorage(prisma),
   distribution: AppDistribution.AppStore,
   billing: billingConfig,
+  // SHOPIFY_LOG_LEVEL=debug surfaces the library's auth reasoning (e.g. why a
+  // session token was rejected) in the Vercel logs; normally info.
+  logger: { level: process.env.SHOPIFY_LOG_LEVEL === "debug" ? LogSeverity.Debug : LogSeverity.Info },
   hooks: {
     afterAuth: async ({ session }) => {
       // One Shop row per installed store; reinstalling clears the uninstall marker.
@@ -75,7 +80,29 @@ const admin: typeof shopify.authenticate.admin = async (request) => {
       throw sessionConfigErrorResponse(msg, found.isDocumentRequest);
     }
   }
-  return shopify.authenticate.admin(request);
+  try {
+    return await shopify.authenticate.admin(request);
+  } catch (err) {
+    // A redirect to the bounce page is normally one step of sign-in. Many in
+    // a row for the same shop is the silent reload loop: stop and explain.
+    if (isBounceRedirect(err)) {
+      const shop = new URL(request.url).searchParams.get("shop");
+      if (shop) {
+        const count = await recordBounce(prisma, shop).catch(() => 0);
+        if (count > BOUNCE_LIMIT) {
+          const diagnosis = await diagnoseLoop({
+            shop,
+            sessionToken: found?.token ?? null,
+            apiKey: process.env.SHOPIFY_API_KEY ?? "",
+            apiSecret: process.env.SHOPIFY_API_SECRET ?? "",
+          });
+          console.error(`[auth] Reload loop stopped for ${shop} after ${count} sign-in restarts. ${diagnosis.title}. ${diagnosis.detail} Fix: ${diagnosis.fix}`);
+          throw sessionConfigErrorResponse(diagnosis, !request.headers.get("authorization"));
+        }
+      }
+    }
+    throw err;
+  }
 };
 
 function escapeHtml(s: string) {
