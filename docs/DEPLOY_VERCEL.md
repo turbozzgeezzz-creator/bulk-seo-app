@@ -16,6 +16,8 @@ Vercel project → **Settings → Environment Variables** (Production):
 | `SHOPIFY_API_SECRET` | the app's current Client Secret (mark as Sensitive) |
 | `ANTHROPIC_API_KEY` | needed for generation jobs |
 | `SHOPIFY_APP_URL` | `https://<production-domain>` (from Settings → Domains). If unset, the app falls back to Vercel's `VERCEL_PROJECT_PRODUCTION_URL`, but setting it explicitly is recommended |
+| `BILLING_ENABLED` | leave unset until pricing is approved (docs/PRICING_PROPOSAL.md). `true` turns on plan limits and the upgrade/credit purchase buttons. Usage is counted either way |
+| `BILLING_TEST` | leave unset (test charges). `false` only when charging for real |
 
 Variables only reach **new** deployments. After changing them, redeploy the **latest** deployment: Deployments → the top entry → ⋯ → Redeploy. Check the commit shown on that entry: "Redeploy" on an older entry rebuilds that older commit's code. `/healthz` shows the `commit` actually running.
 
@@ -84,7 +86,7 @@ Every step of an admin page load now has a deadline, so a stalled dependency sho
 | Any single request the Shopify library sends (token calls, GraphQL) | 30 s | aborted; surfaces as the sign-in page above or "This page couldn't load" |
 | Database connect / wait for a pooled connection | 10 s each | "This page couldn't load" |
 | Any single database query | 15 s | "This page couldn't load" |
-| Billing check (only when `BILLING_PLAN` is set) | 20 s | "This page couldn't load" |
+| Billing check on the Plan & usage page (only when `BILLING_ENABLED=true`) | 15 s | the page loads and says billing isn't available |
 
 What the Vercel function logs show:
 

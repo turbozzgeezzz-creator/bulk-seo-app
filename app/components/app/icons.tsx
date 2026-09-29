@@ -68,6 +68,12 @@ export const IStop = ({ size = 16, className }: P) => (
     <rect x="6" y="6" width="12" height="12" rx="2" />
   </svg>
 );
+export const IPause = ({ size = 16, className }: P) => (
+  <svg {...svg(size, className)}>
+    <rect x="6" y="5" width="4" height="14" rx="1" />
+    <rect x="14" y="5" width="4" height="14" rx="1" />
+  </svg>
+);
 export const IStack = ({ size = 16, className }: P) => (
   <svg {...svg(size, className)}>
     <path d="m12 3 9 5-9 5-9-5 9-5Z" />

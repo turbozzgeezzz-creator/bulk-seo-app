@@ -138,6 +138,23 @@ describe("bulk alt-text job", () => {
     expect(await prisma.bulkJobItem.count({ where: { jobId, status: "PENDING" } })).toBe(10);
   });
 
+  it("stops the job with one readable reason when Shopify revokes access mid-job, instead of failing every item", async () => {
+    const store = fakeStore(makeCatalog(4, 3));
+    const { jobId } = (await createJob(prisma, SHOP, "ALT_TEXT", "ONLY_MISSING")) as { ok: true; jobId: string };
+    // The catalog scan works; every later call gets the library's 401 error.
+    const graphql: ProcessorDeps["graphql"] = async (query, options) => {
+      if (query.includes("BulkFlowScanProducts")) return store.graphql(query, options);
+      throw new Error('Received an error response (401 Unauthorized) from Shopify: { "networkStatusCode": 401, "message": "GraphQL Client: Unauthorized" }');
+    };
+    await runToEnd(jobId, async () => depsFor(store, { graphql }));
+    const job = await prisma.bulkJob.findUniqueOrThrow({ where: { id: jobId } });
+    expect(job.status).toBe("FAILED");
+    expect(job.error).toMatch(/refused BulkFlow's access to this store \(HTTP 401\)/);
+    expect(job.error).not.toMatch(/networkStatusCode/);
+    expect(job.failed).toBe(0);
+    expect(await prisma.bulkJobItem.count({ where: { jobId, status: "PENDING" } })).toBe(12);
+  });
+
   it("fails the job with a clear reason when the store can't be reached", async () => {
     const { jobId } = (await createJob(prisma, SHOP, "ALT_TEXT", "ONLY_MISSING")) as { ok: true; jobId: string };
     await runJobChunk(jobId, { prisma, getDeps: async () => { throw new Error("Could not find a session for shop"); } });

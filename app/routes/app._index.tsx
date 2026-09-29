@@ -9,12 +9,16 @@ import { STATUS_DISPLAY } from "../components/jobDisplay";
 import { EmptyState, JobProgress } from "../components/JobProgress";
 import { Hero, JobRow, POLL_MS, RelativeTime, SafetyList, StatTile, ToolTile, ui } from "../components/app/AppUi";
 import { ICheck, IImage, ISearch, IStack } from "../components/app/icons";
+import { UsageMeter } from "../components/app/BillingUi";
+import { usageFor } from "../lib/billing/usage.server";
+import { BILLING_ENABLED } from "../billing.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const shop = session.shop;
-  const [active, recent, totals, byType, last] = await Promise.all([
-    prisma.bulkJob.findMany({ where: { shop, status: { in: [...ACTIVE_STATUSES] } }, orderBy: { createdAt: "asc" } }),
+  const [usage, active, recent, totals, byType, last] = await Promise.all([
+    usageFor(prisma, shop),
+    prisma.bulkJob.findMany({ where: { shop, status: { in: [...ACTIVE_STATUSES, "PAUSED"] } }, orderBy: { createdAt: "asc" } }),
     prisma.bulkJob.findMany({ where: { shop }, orderBy: { createdAt: "desc" }, take: 5 }),
     prisma.bulkJob.aggregate({ where: { shop }, _sum: { succeeded: true }, _count: { _all: true } }),
     prisma.bulkJob.groupBy({ by: ["type"], where: { shop }, _sum: { succeeded: true } }),
@@ -22,6 +26,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   ]);
   const sumFor = (t: string) => byType.find((g) => g.type === t)?._sum.succeeded ?? 0;
   return {
+    usage,
+    billingEnabled: BILLING_ENABLED,
     active,
     recent,
     stats: {
@@ -35,7 +41,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 };
 
 export default function Dashboard() {
-  const { active, recent, stats } = useLoaderData<typeof loader>();
+  const { usage, billingEnabled, active, recent, stats } = useLoaderData<typeof loader>();
   const revalidator = useRevalidator();
   const firstRun = recent.length === 0;
 
@@ -72,14 +78,25 @@ export default function Dashboard() {
       )}
 
       {active.map((job) => (
-        <s-section key={job.id} heading="Running now">
+        <s-section key={job.id} heading={job.status === "PAUSED" ? "Paused, waiting for more items" : "Running now"}>
           <div className={ui.fadeIn}>
             <s-stack direction="block" gap="base">
               <JobProgress compact {...job} />
               <s-stack direction="inline" gap="base">
-                <s-button variant="primary" href={`/app/jobs/${job.id}`}>
-                  Watch live
-                </s-button>
+                {job.status === "PAUSED" ? (
+                  <>
+                    <s-button variant="primary" href="/app/billing">
+                      See plans & credits
+                    </s-button>
+                    <s-button variant="secondary" href={`/app/jobs/${job.id}`}>
+                      View job
+                    </s-button>
+                  </>
+                ) : (
+                  <s-button variant="primary" href={`/app/jobs/${job.id}`}>
+                    Watch live
+                  </s-button>
+                )}
               </s-stack>
             </s-stack>
           </div>
@@ -112,6 +129,15 @@ export default function Dashboard() {
             </div>
           </>
         )}
+      </s-section>
+
+      <s-section slot="aside" heading="Plan & usage">
+        <UsageMeter usage={usage} compact />
+        <div style={{ marginTop: 10 }}>
+          <Link className={ui.link} to="/app/billing">
+            {billingEnabled ? "Manage plan & credits →" : "See plans →"}
+          </Link>
+        </div>
       </s-section>
 
       <s-section slot="aside" heading="Built to be safe">

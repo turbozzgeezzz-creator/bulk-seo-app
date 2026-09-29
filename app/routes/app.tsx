@@ -1,32 +1,22 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, isRouteErrorResponse, useLoaderData, useRouteError } from "react-router";
+import { Outlet, isRouteErrorResponse, useLoaderData, useNavigation, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate, requireConfig } from "../shopify.server";
-import { BILLING_IS_TEST, BILLING_PLAN } from "../billing.server";
-import { ensureWorkerStarted } from "../lib/jobs/worker.server";
-import { withDeadline } from "../lib/deadline.server";
+import { ensureWorkerStarted, resumeShopJobs } from "../lib/jobs/worker.server";
+import { ui } from "../components/app/AppUi";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   requireConfig();
   const started = Date.now();
-  const { billing, session } = await authenticate.admin(request);
+  const { session } = await authenticate.admin(request);
   const authMs = Date.now() - started;
   ensureWorkerStarted();
-
-  // Billing stays off until the app owner sets a plan (docs/OPEN_DECISIONS.md).
-  if (BILLING_PLAN) {
-    // Plan names come from env, so TypeScript can't infer them from the config literal.
-    const plan = BILLING_PLAN as never;
-    await withDeadline("Shopify billing check", 20_000, () =>
-      billing.require({
-        plans: [plan],
-        isTest: BILLING_IS_TEST,
-        onFailure: async () => billing.request({ plan, isTest: BILLING_IS_TEST }),
-      }),
-    );
-  }
+  // Plans are never forced here: every shop starts on Free and chooses on
+  // /app/billing. A new usage period may have started since the last visit,
+  // so restart any job that was paused for lack of allowance.
+  await resumeShopJobs(session.shop).catch((err) => console.error(`[billing] resuming paused jobs for ${session.shop} failed:`, err));
 
   // One line per admin page load, so the Vercel logs show that requests
   // arrive and how long sign-in took.
@@ -38,6 +28,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function App() {
   const { apiKey } = useLoaderData<typeof loader>();
+  // Moving between pages waits on the server; show that it's happening.
+  const loading = useNavigation().state === "loading";
 
   return (
     <AppProvider embedded apiKey={apiKey}>
@@ -45,8 +37,12 @@ export default function App() {
         <s-link href="/app">Dashboard</s-link>
         <s-link href="/app/new">New job</s-link>
         <s-link href="/app/jobs">Job history</s-link>
+        <s-link href="/app/billing">Plan & usage</s-link>
       </s-app-nav>
-      <Outlet />
+      {loading && <div className={ui.navProgress} role="progressbar" aria-label="Loading" />}
+      <div className={loading ? ui.pageBusy : undefined}>
+        <Outlet />
+      </div>
     </AppProvider>
   );
 }

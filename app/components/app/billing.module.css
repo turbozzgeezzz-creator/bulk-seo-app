@@ -1,0 +1,399 @@
+/* Plan & usage screen. Same tokens as app.module.css (defined on :root there). */
+
+.fadeIn {
+  animation: fade-up 0.35s ease-out both;
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* ---------- Usage meter ---------- */
+
+.usage {
+  border-radius: 16px;
+  padding: 22px 24px;
+  margin: 16px 0;
+  background:
+    radial-gradient(420px 180px at 100% 0%, rgba(41, 182, 255, 0.14), transparent 70%),
+    var(--p-color-bg-surface, #fff);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.07), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  display: grid;
+  gap: 14px;
+}
+
+.usageCompact {
+  margin: 0;
+  padding: 16px 18px;
+  gap: 10px;
+}
+
+.usageHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.usageEyebrow {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--bf-muted);
+}
+
+.usagePlan {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--bf-ink);
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.usageCompact .usagePlan {
+  font-size: 17px;
+}
+
+.usagePlanItems {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bf-muted);
+}
+
+.usageRemaining {
+  text-align: right;
+  display: grid;
+}
+
+.usageRemainingValue {
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  background: var(--bf-grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.usageCompact .usageRemainingValue {
+  font-size: 22px;
+}
+
+.usageRemainingLabel {
+  font-size: 12px;
+  color: var(--bf-muted);
+}
+
+.meter {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--p-color-bg-fill-secondary, #f1f1f1);
+  overflow: hidden;
+}
+
+.meterFill {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--bf-grad);
+  transition: width 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.meterWarn {
+  background: linear-gradient(90deg, #1673ff, #f0a92e);
+}
+
+.meterFull {
+  background: linear-gradient(90deg, #e2532f, #c4290f);
+}
+
+.meterCredits {
+  background: linear-gradient(90deg, #1673ff, #7c4dff);
+}
+
+.usageFoot {
+  display: flex;
+  gap: 8px 20px;
+  flex-wrap: wrap;
+  font-size: 13px;
+  color: var(--bf-muted);
+}
+
+.usageFoot strong {
+  color: var(--bf-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- Plans ---------- */
+
+.planGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px 12px;
+  padding-top: 8px;
+}
+
+@media (max-width: 560px) {
+  .planGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.plan {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 20px 18px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--bf-line);
+  background: var(--p-color-bg-surface, #fff);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.plan:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 24px -16px rgba(10, 43, 184, 0.45);
+}
+
+.planHighlight {
+  border-color: transparent;
+  background:
+    linear-gradient(var(--p-color-bg-surface, #fff), var(--p-color-bg-surface, #fff)) padding-box,
+    var(--bf-grad) border-box;
+  border: 2px solid transparent;
+  box-shadow: 0 14px 30px -20px rgba(10, 43, 184, 0.7);
+}
+
+.planCurrent {
+  background: var(--bf-tint);
+  border-color: var(--bf-tint-strong);
+}
+
+.planFlag {
+  position: absolute;
+  top: -10px;
+  left: 16px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  color: #fff;
+  background: var(--bf-grad);
+}
+
+.planFlagCurrent {
+  background: #1a7f4b;
+}
+
+.planName {
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--bf-muted);
+}
+
+.planPrice {
+  font-size: 30px;
+  font-weight: 750;
+  color: var(--bf-ink);
+  letter-spacing: -0.01em;
+}
+
+.planPer {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bf-muted);
+  margin-left: 4px;
+}
+
+.planItems {
+  font-size: 14px;
+  color: var(--bf-ink);
+}
+
+.planBlurb {
+  margin: 2px 0 4px;
+  font-size: 13px;
+  color: var(--bf-muted);
+}
+
+.planFeatures {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--bf-ink);
+}
+
+.planFeatures li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.planFeatures svg {
+  color: #1a7f4b;
+  flex: none;
+}
+
+.planAction {
+  margin-top: auto;
+}
+
+.currentNote {
+  display: block;
+  text-align: center;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--bf-blue-700);
+  padding: 8px 0;
+}
+
+.primaryBtn,
+.secondaryBtn {
+  width: 100%;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.primaryBtn {
+  border: 0;
+  color: #fff;
+  background: var(--bf-grad);
+  box-shadow: 0 6px 14px -8px rgba(11, 62, 230, 0.9);
+}
+
+.secondaryBtn {
+  border: 1px solid var(--p-color-border, #d4d4d4);
+  color: var(--bf-ink);
+  background: var(--p-color-bg-surface, #fff);
+}
+
+.primaryBtn:hover:not(:disabled),
+.secondaryBtn:hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+
+.secondaryBtn:hover:not(:disabled) {
+  background: var(--p-color-bg-surface-hover, #f7f7f7);
+}
+
+.primaryBtn:disabled,
+.secondaryBtn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.primaryBtn:focus-visible,
+.secondaryBtn:focus-visible {
+  outline: 2px solid var(--bf-blue-500);
+  outline-offset: 2px;
+}
+
+.footnote,
+.sectionIntro {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--bf-muted);
+}
+
+.sectionIntro {
+  margin: 0 0 12px;
+}
+
+/* ---------- Credit packs ---------- */
+
+.packGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.pack {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border-radius: 14px;
+  border: 1px dashed var(--bf-tint-strong);
+  background: linear-gradient(180deg, var(--bf-tint), transparent);
+}
+
+.packCredits {
+  font-size: 24px;
+  font-weight: 750;
+  color: var(--bf-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.packCredits span {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--bf-muted);
+  margin-left: 6px;
+}
+
+.packPrice {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--bf-ink);
+}
+
+.packPrice span {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--bf-muted);
+}
+
+.history {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.history li {
+  display: flex;
+  justify-content: space-between;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--p-color-bg-surface-secondary, #f7f7f7);
+}
+
+.faq {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--bf-muted);
+}
+
+.faq strong {
+  color: var(--bf-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fadeIn,
+  .meterFill,
+  .plan,
+  .primaryBtn,
+  .secondaryBtn {
+    animation: none;
+    transition: none;
+  }
+}

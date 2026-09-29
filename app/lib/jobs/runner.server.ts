@@ -1,6 +1,7 @@
 import type { PrismaClient } from "@prisma/client";
 import { scanProductsPage, type ScannedProduct } from "../shopify/products.server";
 import { processAltTextItem, processMetaItem, type ItemOutcome, type JobMode, type ProcessorDeps } from "./processors.server";
+import { ensureShop, refundUnit, reserveUnit, rolloverIfDue, usageFor, type Unit } from "../billing/usage.server";
 
 /**
  * Bulk job runner.
@@ -31,6 +32,8 @@ const DEFAULT_CONCURRENCY = 4;
 const CLAIM_GRACE_MS = 60_000;
 
 export const ACTIVE_STATUSES = ["SCANNING", "RUNNING"] as const;
+/** Not being worked on, but not finished: waiting for plan allowance or credits. */
+export const PAUSED = "PAUSED";
 
 export interface RunnerOptions {
   prisma: PrismaClient;
@@ -38,6 +41,8 @@ export interface RunnerOptions {
   getDeps: (shop: string) => Promise<ProcessorDeps>;
   timeBudgetMs?: number;
   concurrency?: number;
+  /** Pause jobs when the shop's plan allowance and credits run out (BILLING_ENABLED). Usage is counted either way. */
+  enforceLimits?: boolean;
 }
 
 function itemsForProduct(jobType: string, mode: JobMode, p: ScannedProduct) {
@@ -134,6 +139,18 @@ async function finishIfDone(prisma: PrismaClient, jobId: string) {
   });
 }
 
+async function pauseJob(prisma: PrismaClient, jobId: string, shop: string) {
+  const u = await usageFor(prisma, shop);
+  const reset = u.periodEnd.toLocaleDateString("en-US", { month: "long", day: "numeric" });
+  await prisma.bulkJob.updateMany({
+    where: { id: jobId, status: "RUNNING" },
+    data: {
+      status: PAUSED,
+      error: `Your ${u.planLabel} plan's ${u.included.toLocaleString("en-US")} items for this period are used up and there are no credits left. Upgrade or buy credits and it continues automatically; otherwise it picks up again on ${reset}. Nothing was lost.`,
+    },
+  });
+}
+
 async function failJob(prisma: PrismaClient, jobId: string, reason: string) {
   await prisma.bulkJob.update({ where: { id: jobId }, data: { status: "FAILED", error: reason, finishedAt: new Date() } });
 }
@@ -157,6 +174,8 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<b
 
   try {
     const job = await prisma.bulkJob.findUniqueOrThrow({ where: { id: jobId } });
+    await ensureShop(prisma, job.shop);
+    await rolloverIfDue(prisma, job.shop);
     const deadline = Date.now() + budget;
 
     let deps: ProcessorDeps;
@@ -194,11 +213,21 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<b
       });
       if (batch.length === 0) break;
 
-      const outcomes = await Promise.all(batch.map((item) => processOne(item)));
+      // One unit of the shop's allowance per item, reserved up front and given
+      // back unless the item ends in a verified write.
+      const units: (Unit | null)[] = [];
+      for (let i = 0; i < batch.length; i++) units.push(await reserveUnit(prisma, job.shop, opts.enforceLimits ?? false));
+      const runnable = batch.filter((_, i) => units[i] !== null);
+      const outcomes = await Promise.all(runnable.map((item) => processOne(item)));
       const fatal = outcomes.find((o) => o.status === "FATAL");
-      for (let i = 0; i < batch.length; i++) {
-        if (outcomes[i].status === "RETRY") retryIdsThisChunk.add(batch[i].id);
-        await recordOutcome(prisma, jobId, batch[i], outcomes[i]);
+      for (let i = 0; i < runnable.length; i++) {
+        if (outcomes[i].status !== "SUCCEEDED") await refundUnit(prisma, job.shop, units[batch.indexOf(runnable[i])]!);
+        if (outcomes[i].status === "RETRY") retryIdsThisChunk.add(runnable[i].id);
+        await recordOutcome(prisma, jobId, runnable[i], outcomes[i]);
+      }
+      if (runnable.length < batch.length && !fatal) {
+        await pauseJob(prisma, jobId, job.shop);
+        return true;
       }
       if (fatal) {
         await failJob(prisma, jobId, `${fatal.reason} The job was stopped so the rest of your catalog wasn't marked as failed; nothing else was changed.`);
@@ -215,7 +244,7 @@ export async function runJobChunk(jobId: string, opts: RunnerOptions): Promise<b
 
 /** Starts a job for a shop. Refuses if one of the same type is already running for that shop. */
 export async function createJob(prisma: PrismaClient, shop: string, type: "ALT_TEXT" | "META", mode: JobMode) {
-  const active = await prisma.bulkJob.findFirst({ where: { shop, type, status: { in: [...ACTIVE_STATUSES] } } });
+  const active = await prisma.bulkJob.findFirst({ where: { shop, type, status: { in: [...ACTIVE_STATUSES, PAUSED] } } });
   if (active) return { ok: false as const, error: "A job of this type is already running for your store.", jobId: active.id };
   const job = await prisma.bulkJob.create({ data: { shop, type, mode, status: "SCANNING" } });
   return { ok: true as const, jobId: job.id };
@@ -227,7 +256,7 @@ export async function retryFailedItems(prisma: PrismaClient, shop: string, jobId
   if (!job) return { ok: false as const, error: "Job not found." };
   const failed = await prisma.bulkJobItem.findMany({ where: { jobId, status: "FAILED" } });
   if (failed.length === 0) return { ok: false as const, error: "This job has no failed items to retry." };
-  const active = await prisma.bulkJob.findFirst({ where: { shop, type: job.type, status: { in: [...ACTIVE_STATUSES] } } });
+  const active = await prisma.bulkJob.findFirst({ where: { shop, type: job.type, status: { in: [...ACTIVE_STATUSES, PAUSED] } } });
   if (active) return { ok: false as const, error: "A job of this type is already running for your store.", jobId: active.id };
   const retry = await prisma.bulkJob.create({
     data: {
@@ -249,7 +278,7 @@ export async function retryFailedItems(prisma: PrismaClient, shop: string, jobId
 
 export async function cancelJob(prisma: PrismaClient, shop: string, jobId: string) {
   const res = await prisma.bulkJob.updateMany({
-    where: { id: jobId, shop, status: { in: [...ACTIVE_STATUSES] } },
+    where: { id: jobId, shop, status: { in: [...ACTIVE_STATUSES, PAUSED] } },
     data: { status: "CANCELLED", finishedAt: new Date() },
   });
   return res.count > 0;

@@ -9,13 +9,15 @@ import { kickJob } from "../lib/jobs/worker.server";
 import { JOB_TYPE_LABEL, unitFor } from "../components/jobDisplay";
 import {
   ActivityFeed,
-  Diff,
+  AltGallery,
+  FailureGroups,
   LivePanel,
   OutcomeHeader,
   POLL_MS,
-  ReasonText,
   ResultStats,
   SectionHead,
+  SerpPreview,
+  ShowMore,
   StatTile,
   Thumb,
   isActive,
@@ -42,12 +44,23 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
   // nudges it, so progress never depends on a single mechanism.
   if ((ACTIVE_STATUSES as readonly string[]).includes(job.status)) kickJob(job.id);
 
-  const [failures, updates, flagged, pending] = await Promise.all([
-    prisma.bulkJobItem.findMany({ where: { jobId: job.id, status: "FAILED" }, orderBy: { updatedAt: "desc" }, take: 100 }),
-    prisma.bulkJobItem.findMany({ where: { jobId: job.id, status: "SUCCEEDED" }, orderBy: { updatedAt: "desc" }, take: 25 }),
+  const [reasons, updates, flagged, pending] = await Promise.all([
+    prisma.bulkJobItem.groupBy({ by: ["error"], where: { jobId: job.id, status: "FAILED" }, _count: { _all: true }, orderBy: { _count: { error: "desc" } }, take: 8 }),
+    prisma.bulkJobItem.findMany({ where: { jobId: job.id, status: "SUCCEEDED" }, orderBy: { updatedAt: "desc" }, take: 60 }),
     prisma.bulkJobItem.findMany({ where: { jobId: job.id, status: "SUCCEEDED", note: { not: null } }, orderBy: { updatedAt: "desc" }, take: 50 }),
     prisma.bulkJobItem.findMany({ where: { jobId: job.id, status: "PENDING", attempts: { gt: 0 } }, orderBy: { updatedAt: "desc" }, take: 20 }),
   ]);
+
+  // Failures grouped by reason (every failed item, not just the latest), each with a few examples.
+  const failureGroups = await Promise.all(
+    reasons.map(async (r) => ({
+      reason: r.error ?? "No reason recorded.",
+      count: r._count._all,
+      items: (
+        await prisma.bulkJobItem.findMany({ where: { jobId: job.id, status: "FAILED", error: r.error }, orderBy: { updatedAt: "desc" }, take: 6 })
+      ).map((f) => ({ id: f.id, label: f.label, productId: f.productId, imageUrl: f.imageUrl })),
+    })),
+  );
 
   // Items finished since roughly the previous poll get the feed's entrance
   // highlight. Decided here, not in the browser, so rendering stays pure.
@@ -55,7 +68,8 @@ export const loader = async ({ request, params }: LoaderFunctionArgs) => {
 
   return {
     job,
-    failures: failures.map((f) => ({ id: f.id, label: f.label, productId: f.productId, imageUrl: f.imageUrl, error: f.error })),
+    shop: session.shop,
+    failureGroups,
     updates: updates.map((u) => ({
       id: u.id,
       label: u.label,
@@ -88,10 +102,11 @@ export const action = async ({ request, params }: ActionFunctionArgs) => {
 };
 
 export default function JobPage() {
-  const { job, failures, updates, flagged, retrying } = useLoaderData<typeof loader>();
+  const { job, shop, failureGroups, updates, flagged, retrying } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const revalidator = useRevalidator();
   const active = isActive(job.status);
+  const paused = job.status === "PAUSED";
   const busyIntent = fetcher.state !== "idle" ? fetcher.formData?.get("intent") : null;
 
   useEffect(() => {
@@ -129,19 +144,29 @@ export default function JobPage() {
                 Every {job.type === "ALT_TEXT" ? "image" : "product"} already has a value, so nothing was changed.
               </s-banner>
             )}
+            {paused && (
+              <s-banner tone="warning" heading="Paused, waiting for more items">
+                {job.error}
+              </s-banner>
+            )}
             {job.status === "CANCELLED" && (
               <s-banner tone="info">Everything updated before you stopped the job stays updated. Start a new job any time to pick up the rest.</s-banner>
             )}
             {error && <s-banner tone="critical">{error}</s-banner>}
 
             <s-stack direction="inline" gap="base">
-              {active && (
+              {paused && (
+                <s-button variant="primary" href="/app/billing">
+                  See plans & credits
+                </s-button>
+              )}
+              {(active || paused) && (
                 <s-button tone="critical" variant="secondary" loading={busyIntent === "cancel" || undefined} onClick={() => fetcher.submit({ intent: "cancel" }, { method: "POST" })}>
                   Stop job
                 </s-button>
               )}
               {retryButton}
-              {!active && (
+              {!active && !paused && (
                 <s-button variant={retryButton ? "secondary" : "primary"} href="/app/new">
                   Start another job
                 </s-button>
@@ -204,28 +229,10 @@ export default function JobPage() {
       )}
 
       {/* ---------- Results ---------- */}
-      {failures.length > 0 && (
+      {failureGroups.length > 0 && (
         <s-section>
           <SectionHead title="Needs attention" count={job.failed} bad />
-          <ul className={ui.rows}>
-            {failures.map((f) => (
-              <li key={f.id} className={ui.resultRow}>
-                <Thumb src={f.imageUrl} alt={f.label} />
-                <span>
-                  <span className={ui.resultName}>{f.label}</span>
-                  <ReasonText>{f.error}</ReasonText>
-                </span>
-                <s-link href={productAdminUrl(f.productId)} target="_blank">
-                  Open product
-                </s-link>
-              </li>
-            ))}
-          </ul>
-          {job.failed > failures.length && (
-            <s-text color="subdued">
-              Showing the latest {failures.length} of {job.failed.toLocaleString()}.{active ? "" : " Retrying includes all of them."}
-            </s-text>
-          )}
+          <FailureGroups groups={failureGroups} total={job.failed} />
         </s-section>
       )}
 
@@ -252,21 +259,23 @@ export default function JobPage() {
 
       {!active && updates.length > 0 && (
         <s-section>
-          <SectionHead title="Changes" count={job.succeeded} />
-          <ul className={ui.rows}>
-            {updates.map((u) => (
-              <li key={u.id} className={ui.resultRow}>
-                <Thumb src={u.imageUrl} alt={u.label} />
-                <span style={{ minWidth: 0 }}>
-                  <span className={ui.resultName}>{u.label}</span>
-                  <Diff before={u.before} after={u.after} />
-                </span>
-                <s-link href={productAdminUrl(u.productId)} target="_blank">
-                  Open product
-                </s-link>
-              </li>
-            ))}
-          </ul>
+          <SectionHead title={job.type === "ALT_TEXT" ? "New alt text" : "How your products now appear in search"} count={job.succeeded} />
+          {job.type === "ALT_TEXT" ? (
+            <ShowMore items={updates} initial={12} noun="images" render={(visible) => <AltGallery items={visible} />} />
+          ) : (
+            <ShowMore
+              items={updates}
+              initial={5}
+              noun="products"
+              render={(visible) => (
+                <ul className={ui.rows}>
+                  {visible.map((u) => (
+                    <SerpPreview key={u.id} item={u} shop={shop} />
+                  ))}
+                </ul>
+              )}
+            />
+          )}
           {job.succeeded > updates.length && (
             <div style={{ marginTop: 8 }}>
               <s-text color="subdued">

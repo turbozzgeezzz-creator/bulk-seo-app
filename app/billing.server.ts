@@ -1,35 +1,28 @@
 import { BillingInterval } from "@shopify/shopify-app-react-router/server";
+import { CREDIT_PACKS, CURRENCY, PAID_PLANS, TRIAL_DAYS } from "./lib/billing/plans";
 
 /**
- * Billing API plumbing, with NO prices chosen.
+ * Billing API configuration built from app/lib/billing/plans.ts.
  *
- * Plan names, prices, currency, trial length and usage limits are business
- * decisions for the app owner (see docs/OPEN_DECISIONS.md). Until they are
- * set via environment variables, billing is off and the app is free to use,
- * which is fine on development stores but must not ship to the App Store.
+ *   BILLING_ENABLED=true   turn plan limits and charging on (default off:
+ *                          usage is still counted, nothing is blocked or charged)
+ *   BILLING_TEST=false     charge for real (default: Shopify test charges)
  *
- * Env vars (all required to turn billing on):
- *   BILLING_PLAN_NAME        e.g. the plan's display name
- *   BILLING_PLAN_AMOUNT      monthly price as a number
- *   BILLING_PLAN_CURRENCY    ISO code, e.g. USD
- * Optional:
- *   BILLING_TRIAL_DAYS       free trial length in days
- *   BILLING_TEST=false       charge for real (default is test charges)
+ * Shopify only accepts Billing API calls from apps with public distribution.
  */
 
-const name = process.env.BILLING_PLAN_NAME?.trim();
-const amount = Number(process.env.BILLING_PLAN_AMOUNT);
-const currencyCode = process.env.BILLING_PLAN_CURRENCY?.trim();
-const trialDays = process.env.BILLING_TRIAL_DAYS ? Number(process.env.BILLING_TRIAL_DAYS) : undefined;
-
-export const BILLING_PLAN: string | null = name && Number.isFinite(amount) && amount > 0 && currencyCode ? name : null;
+export const BILLING_ENABLED = process.env.BILLING_ENABLED === "true";
 export const BILLING_IS_TEST = process.env.BILLING_TEST !== "false";
 
-export const billingConfig = BILLING_PLAN
-  ? {
-      [BILLING_PLAN]: {
-        trialDays,
-        lineItems: [{ amount, currencyCode: currencyCode!, interval: BillingInterval.Every30Days as const }],
+export const billingConfig = {
+  ...Object.fromEntries(
+    PAID_PLANS.map((p) => [
+      p.name,
+      {
+        trialDays: TRIAL_DAYS,
+        lineItems: [{ amount: p.monthlyPrice, currencyCode: CURRENCY, interval: BillingInterval.Every30Days as const }],
       },
-    }
-  : undefined;
+    ]),
+  ),
+  ...Object.fromEntries(CREDIT_PACKS.map((c) => [c.name, { amount: c.price, currencyCode: CURRENCY, interval: BillingInterval.OneTime as const }])),
+};

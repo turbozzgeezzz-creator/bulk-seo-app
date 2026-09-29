@@ -1,8 +1,8 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import styles from "./app.module.css";
 import { useMounted, useTweened } from "./hooks";
-import { IAlert, IArrow, ICheck, IImage, ISearch, IShield, ISkip, IStack, IStop } from "./icons";
+import { IAlert, IArrow, ICheck, IImage, IPause, ISearch, IShield, ISkip, IStack, IStop } from "./icons";
 import { JOB_TYPE_LABEL, MODE_LABEL, unitFor } from "../jobDisplay";
 import { estimateJob, formatMinutesLeft } from "../jobProgressMath";
 
@@ -404,6 +404,11 @@ export function OutcomeHeader({ job }: { job: JobLike }) {
     icon = <IAlert size={26} />;
     title = "This job stopped";
   }
+  if (job.status === "PAUSED") {
+    tone = styles.outcomeWarn;
+    icon = <IPause size={24} />;
+    title = `Paused at ${job.processed.toLocaleString()} of ${job.total.toLocaleString()}`;
+  }
   if (job.status === "CANCELLED") {
     tone = styles.outcomeNeutral;
     icon = <IStop size={24} />;
@@ -507,4 +512,125 @@ export function SectionHead({ title, count, bad, action }: { title: string; coun
 
 export function productAdminUrl(productGid: string) {
   return `shopify://admin/products/${productGid.split("/").pop()}`;
+}
+
+// ---------------------------------------------------------------- results (grouped)
+
+export interface FailureGroup {
+  reason: string;
+  count: number;
+  items: { id: string; label: string; productId: string; imageUrl?: string | null }[];
+}
+
+/** Failures grouped by reason: one explanation per cause, not one row per item. */
+export function FailureGroups({ groups, total }: { groups: FailureGroup[]; total: number }) {
+  return (
+    <div className={styles.groups}>
+      {groups.map((g, i) => (
+        <details key={g.reason} className={styles.group} open={i === 0 && groups.length === 1 && g.count <= 5}>
+          <summary className={styles.groupSummary}>
+            <span className={styles.groupCount}>{g.count.toLocaleString()}</span>
+            <span className={styles.groupReason}>{g.reason}</span>
+            <span className={styles.groupToggle}>{g.count === 1 ? "Show item" : "Show items"}</span>
+          </summary>
+          <ul className={styles.groupItems}>
+            {g.items.map((it) => (
+              <li key={it.id}>
+                <Thumb src={it.imageUrl} alt={it.label} />
+                <span className={styles.resultName}>{it.label}</span>
+                <s-link href={productAdminUrl(it.productId)} target="_blank">
+                  Open product
+                </s-link>
+              </li>
+            ))}
+            {g.count > g.items.length && <li className={styles.groupMore}>and {(g.count - g.items.length).toLocaleString()} more with the same reason</li>}
+          </ul>
+        </details>
+      ))}
+      {total > groups.reduce((n, g) => n + g.count, 0) && <span className={styles.groupMore}>Other, less common reasons are included when you retry.</span>}
+    </div>
+  );
+}
+
+export interface ChangeItem {
+  id: string;
+  label: string;
+  productId: string;
+  imageUrl?: string | null;
+  before: unknown;
+  after: unknown;
+}
+
+/** Alt text results as a gallery: each photo with the words now describing it. */
+export function AltGallery({ items }: { items: ChangeItem[] }) {
+  return (
+    <ul className={styles.gallery}>
+      {items.map((u) => (
+        <li key={u.id} className={styles.galleryCard}>
+          <a href={productAdminUrl(u.productId)} target="_blank" rel="noreferrer" className={styles.galleryImg}>
+            {u.imageUrl ? <img src={u.imageUrl} alt={typeof u.after === "string" ? u.after : u.label} loading="lazy" /> : <IImage size={28} />}
+            <span className={styles.galleryVerified}>
+              <ICheck size={12} /> Verified
+            </span>
+          </a>
+          <div className={styles.galleryBody}>
+            <span className={styles.galleryLabel}>{u.label}</span>
+            <span className={styles.galleryAlt}>{typeof u.after === "string" ? u.after : ""}</span>
+            {!isEmptyValue(u.before) && <span className={styles.galleryWas}>Was: {String(u.before)}</span>}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** Meta results the way a shopper meets them: as a search result. */
+export function SerpPreview({ item, shop }: { item: ChangeItem; shop: string }) {
+  const a = (item.after ?? {}) as { title?: string | null; description?: string | null };
+  const b = (item.before ?? {}) as { title?: string | null; description?: string | null };
+  // The store's myshopify address: its public domain isn't known here, and a made-up one would mislead.
+  const domain = shop;
+  return (
+    <li className={styles.serpRow}>
+      <div className={styles.serp}>
+        <div className={styles.serpSite}>
+          <span className={styles.serpFavicon} aria-hidden="true">
+            {domain[0]?.toUpperCase()}
+          </span>
+          <span>
+            <span className={styles.serpDomain}>{domain}</span>
+            <span className={styles.serpPath}>› products</span>
+          </span>
+        </div>
+        <div className={styles.serpTitle}>{a.title}</div>
+        <div className={styles.serpDesc}>{a.description}</div>
+      </div>
+      <div className={styles.serpSide}>
+        <span className={styles.resultName}>{item.label}</span>
+        <span className={styles.serpMeta}>
+          {a.title?.length ?? 0} / 60 title · {a.description?.length ?? 0} / 160 description
+        </span>
+        <span className={styles.serpMeta}>{isEmptyValue(b.title) && isEmptyValue(b.description) ? "Was empty before" : "Replaced earlier text"}</span>
+        <s-link href={productAdminUrl(item.productId)} target="_blank">
+          Open product
+        </s-link>
+      </div>
+    </li>
+  );
+}
+
+/** Shows the first `initial` children and a toggle for the rest. */
+export function ShowMore<T>({ items, initial, render, noun }: { items: T[]; initial: number; render: (visible: T[]) => ReactNode; noun: string }) {
+  const [all, setAll] = useState(false);
+  const visible = all ? items : items.slice(0, initial);
+  return (
+    <>
+      {render(visible)}
+      {items.length > initial && (
+        <button type="button" className={styles.showMore} onClick={() => setAll(!all)}>
+          {all ? `Show fewer ${noun}` : `Show all ${items.length} ${noun}`}
+        </button>
+      )}
+    </>
+  );
 }

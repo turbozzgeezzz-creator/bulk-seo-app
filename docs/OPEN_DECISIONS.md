@@ -5,10 +5,10 @@ None of these have been guessed. Code that depends on them is either off or uses
 | # | Decision | Why it matters | Where it plugs in |
 |---|---|---|---|
 | 1 | ~~App name and branding~~ **Decided: BulkFlow**, logo provided. Listing tagline still open. | | `shopify.app.toml`, `public/brand/` |
-| 2 | **Pricing: price, currency, billing interval** | Billing is wired but off until set. | `BILLING_PLAN_NAME`, `BILLING_PLAN_AMOUNT`, `BILLING_PLAN_CURRENCY` env vars (`app/billing.server.ts`) |
-| 3 | **Billing Model: Billing API vs Shopify Managed Pricing** | Shopify can host the plan-selection page itself (Managed Pricing) instead of the app calling the Billing API. Code is currently Billing API. | `app/billing.server.ts`, `app/routes/app.tsx` |
-| 4 | **Free trial length** (or none) | Shown on the approval screen. | `BILLING_TRIAL_DAYS` |
-| 5 | **Plan limits**: images/products per month, or unlimited with a fair-use cap | Each alt text is a paid vision call; unlimited plans need a cost ceiling. | Not built yet: a per-shop monthly usage counter in the runner |
+| 2 | **Pricing: plan prices, allowances, credit packs** | **Proposed, awaiting approval**: see `docs/PRICING_PROPOSAL.md`. Billing is built but off (`BILLING_ENABLED`) and in test mode until `BILLING_TEST=false`. | `app/lib/billing/plans.ts` |
+| 3 | **Public distribution** (required for the Billing API) | Shopify refuses all Billing API calls, even test charges, from apps without public distribution. Choosing a distribution method can't be undone. | Partner Dashboard → BulkFlow → Distribution |
+| 4 | **Free trial length** | Proposed: 7 days on paid plans, plus the Free plan. | `TRIAL_DAYS` in `app/lib/billing/plans.ts` |
+| 5 | ~~Plan limits~~ **Built**: per-shop usage per 30-day period, enforced when billing is on; jobs pause and resume instead of failing. Allowances are part of #2. | | `app/lib/billing/usage.server.ts` |
 | 6 | **AI model and cost ceiling** | Code defaults to Claude Opus 5 (`AI_MODEL`). A cheaper model lowers per-item cost and may change quality; measure on a real catalog before choosing, since this sets the margin on every plan. | `AI_MODEL` env var |
 | 7 | **Write directly vs review first** | v1 writes directly (the only-missing default is safe, and before-values are kept for undo). Some merchants will want approve-before-publish. | Stage 2 item |
 | 8 | **Operator legal entity, support email, privacy contact** | Required in the privacy policy and App Store listing. | `app/routes/privacy.tsx` placeholders |

@@ -15,6 +15,8 @@ export class ShopifyApiError extends Error {
   constructor(
     message: string,
     readonly retryable: boolean,
+    /** The app has lost access to the store: every other item would fail the same way. */
+    readonly fatal = false,
   ) {
     super(message);
     this.name = "ShopifyApiError";
@@ -55,7 +57,12 @@ export async function shopifyQuery<T>(
       }
       const message = anyErr?.message ?? String(err);
       if (/401|403|invalid api key|access token/i.test(message)) {
-        throw new ShopifyApiError(`Shopify rejected the app's access (${message.slice(0, 150)}). The app may have been uninstalled.`, false);
+        const status = /\b(401|403)\b/.exec(message)?.[1];
+        throw new ShopifyApiError(
+          `Shopify refused BulkFlow's access to this store${status ? ` (HTTP ${status})` : ""}. The app may have been uninstalled, or its permissions changed; open BulkFlow from Shopify admin to reconnect, then retry.`,
+          false,
+          true,
+        );
       }
       if (/5\d\d|ECONNRESET|ETIMEDOUT|fetch failed|network/i.test(message)) {
         lastMessage = message;

@@ -16,6 +16,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     db.shop.deleteMany({ where: { shop } }),
     db.authBounce.deleteMany({ where: { shop } }),
     db.authEvent.deleteMany({ where: { shop } }),
+    db.creditPurchase.deleteMany({ where: { shop } }),
   ]);
   console.log(
     `Received ${topic} webhook for ${shop}: deleted ${items.count} job items, ${jobs.count} jobs, ${sessions.count} sessions, ${shops.count} shop record.`,

@@ -52,6 +52,7 @@ function fromError(err: unknown): ItemOutcome {
     return { status: "FAILED", reason: err.message };
   }
   if (err instanceof ShopifyApiError) {
+    if (err.fatal) return { status: "FATAL", reason: err.message };
     return err.retryable ? { status: "RETRY", reason: err.message } : { status: "FAILED", reason: err.message };
   }
   return { status: "FAILED", reason: `Unexpected error: ${err instanceof Error ? err.message : String(err)}` };

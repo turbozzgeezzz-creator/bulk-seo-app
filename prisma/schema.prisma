@@ -14,21 +14,21 @@ datasource db {
 }
 
 model Session {
-  id            String    @id
-  shop          String
-  state         String
-  isOnline      Boolean   @default(false)
-  scope         String?
-  expires       DateTime?
-  accessToken   String
-  userId        BigInt?
-  firstName     String?
-  lastName      String?
-  email         String?
-  accountOwner  Boolean   @default(false)
-  locale        String?
-  collaborator  Boolean?  @default(false)
-  emailVerified Boolean?  @default(false)
+  id                  String    @id
+  shop                String
+  state               String
+  isOnline            Boolean   @default(false)
+  scope               String?
+  expires             DateTime?
+  accessToken         String
+  userId              BigInt?
+  firstName           String?
+  lastName            String?
+  email               String?
+  accountOwner        Boolean   @default(false)
+  locale              String?
+  collaborator        Boolean?  @default(false)
+  emailVerified       Boolean?  @default(false)
   refreshToken        String?
   refreshTokenExpires DateTime?
 }
@@ -44,6 +44,34 @@ model Shop {
   installedAt   DateTime  @default(now())
   uninstalledAt DateTime?
   updatedAt     DateTime  @updatedAt
+
+  // Billing (see app/lib/billing/). plan is a key of PLANS; synced from the
+  // shop's active Shopify subscription, FREE when there is none.
+  plan                  String   @default("FREE")
+  subscriptionId        String?
+  // Usage is counted per rolling 30-day period starting at periodStart. An
+  // item counts once its write to Shopify is verified; failed and skipped
+  // items never count. Included volume is used first, then credits.
+  periodStart           DateTime @default(now())
+  usedThisPeriod        Int      @default(0)
+  creditsUsedThisPeriod Int      @default(0)
+  // Pay-as-you-go credits (1 credit = 1 item), bought as one-time charges. They don't expire.
+  creditBalance         Int      @default(0)
+}
+
+// A credit pack the shop bought. id is Shopify's AppPurchaseOneTime GID, so
+// a purchase can be credited exactly once however often it is synced.
+model CreditPurchase {
+  id        String   @id
+  shop      String
+  pack      String
+  credits   Int
+  amount    Decimal  @db.Decimal(10, 2)
+  currency  String
+  test      Boolean
+  createdAt DateTime @default(now())
+
+  @@index([shop])
 }
 
 model BulkJob {
@@ -54,6 +82,7 @@ model BulkJob {
   // ONLY_MISSING (default: never touch a field that already has a value) | OVERWRITE_ALL
   mode   String @default("ONLY_MISSING")
   // SCANNING -> RUNNING -> COMPLETED | COMPLETED_WITH_ERRORS | FAILED | CANCELLED
+  // RUNNING <-> PAUSED when the shop's plan allowance and credits run out (and back when they're topped up)
   status String @default("SCANNING")
 
   // Catalog scan state (the job enumerates products page by page before

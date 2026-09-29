@@ -17,6 +17,7 @@ export const STATUS_DISPLAY: Record<string, { label: string; tone: Tone }> = {
   COMPLETED_WITH_ERRORS: { label: "Completed with errors", tone: "warning" },
   FAILED: { label: "Stopped", tone: "critical" },
   CANCELLED: { label: "Cancelled", tone: "neutral" },
+  PAUSED: { label: "Paused · needs allowance", tone: "warning" },
 };
 
 export function unitFor(type: string, n: number) {

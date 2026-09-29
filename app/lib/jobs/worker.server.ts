@@ -7,6 +7,8 @@ import { fetchImageForVision } from "../seo/imageFetch.server";
 import { generateAltText, generateMeta } from "../seo/generate.server";
 import type { ProcessorDeps } from "./processors.server";
 import { ACTIVE_STATUSES, runJobChunk } from "./runner.server";
+import { BILLING_ENABLED } from "../../billing.server";
+import { resumePausedJobs } from "../billing/usage.server";
 
 const TICK_MS = 2_000;
 const MAX_JOBS_PER_TICK = 3;
@@ -77,9 +79,11 @@ async function handOff(jobId: string) {
 }
 
 export function kickJob(jobId: string) {
-  if (inFlight.has(jobId)) return;
+  // DISABLE_JOB_WORKER=1 means this process never processes jobs, including
+  // the nudge a job page gives an active job (tests, screenshots, admin tools).
+  if (process.env.DISABLE_JOB_WORKER === "1" || inFlight.has(jobId)) return;
   inFlight.add(jobId);
-  const work = runJobChunk(jobId, { prisma, getDeps: depsForShop })
+  const work = runJobChunk(jobId, { prisma, getDeps: depsForShop, enforceLimits: BILLING_ENABLED })
     // Only the invocation that actually held the claim schedules the next
     // chunk; others (e.g. a page poll that lost the race) just stop, which
     // prevents a ping-pong of hand-offs while a chunk is running.
@@ -89,6 +93,13 @@ export function kickJob(jobId: string) {
   // Keeps the serverless invocation alive until the chunk (and hand-off) finish.
   // A no-op on a long-lived server, where the promise simply runs.
   waitUntil(work);
+}
+
+/** Restarts the shop's paused jobs if it has allowance again (after an upgrade, credit purchase or period reset). */
+export async function resumeShopJobs(shop: string) {
+  const ids = await resumePausedJobs(prisma, shop);
+  for (const id of ids) kickJob(id);
+  return ids.length;
 }
 
 async function tick() {

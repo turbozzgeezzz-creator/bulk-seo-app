@@ -4,7 +4,9 @@ import { redirect, useFetcher, useLoaderData, useSearchParams } from "react-rout
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
-import { ACTIVE_STATUSES, createJob } from "../lib/jobs/runner.server";
+import { ACTIVE_STATUSES, PAUSED, createJob } from "../lib/jobs/runner.server";
+import { usageFor } from "../lib/billing/usage.server";
+import { BILLING_ENABLED } from "../billing.server";
 import { kickJob } from "../lib/jobs/worker.server";
 import { ui } from "../components/app/AppUi";
 import { ICheck, IEye, IFill, IImage, IRewrite, ISearch, IShield } from "../components/app/icons";
@@ -14,11 +16,14 @@ type Mode = "ONLY_MISSING" | "OVERWRITE_ALL";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { session } = await authenticate.admin(request);
-  const active = await prisma.bulkJob.findMany({
-    where: { shop: session.shop, status: { in: [...ACTIVE_STATUSES] } },
-    select: { id: true, type: true },
-  });
-  return { active };
+  const [active, usage] = await Promise.all([
+    prisma.bulkJob.findMany({
+      where: { shop: session.shop, status: { in: [...ACTIVE_STATUSES, PAUSED] } },
+      select: { id: true, type: true },
+    }),
+    usageFor(prisma, session.shop),
+  ]);
+  return { active, remaining: usage.remaining, planLabel: usage.planLabel, billingEnabled: BILLING_ENABLED };
 };
 
 export const action = async ({ request }: ActionFunctionArgs) => {
@@ -83,7 +88,7 @@ function Option<T extends string>({
 }
 
 export default function NewJob() {
-  const { active } = useLoaderData<typeof loader>();
+  const { active, remaining, planLabel, billingEnabled } = useLoaderData<typeof loader>();
   const [params] = useSearchParams();
   const fetcher = useFetcher<typeof action>();
   const initialType: JobType = params.get("type") === "META" ? "META" : "ALT_TEXT";
@@ -197,6 +202,14 @@ export default function NewJob() {
               <span>Anything that can&apos;t be updated is listed with the reason, and you can retry it in one click.</span>
             </li>
           </ul>
+          {billingEnabled && (
+            <div className={ui.allowance}>
+              <strong>{remaining.toLocaleString()}</strong> items left this period on your {planLabel} plan, including credits. Only verified updates count. If the job needs more it pauses and waits; nothing is lost.{" "}
+              <a className={ui.link} href="/app/billing">
+                Plans & credits
+              </a>
+            </div>
+          )}
           {fetcher.data?.error && (
             <div className={ui.fadeIn}>
               <s-banner tone="critical">{fetcher.data.error}</s-banner>
