@@ -121,7 +121,7 @@ try {
   await page.waitForTimeout(500);
   const doc = documents.filter((d) => d.status < 300 || d.status >= 400).at(-1);
   const html = doc?.html ?? "";
-  serverText = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&#39;/g, "'").replace(/\s+/g, " ").trim();
+  serverText = html.replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/g, " ").replace(/<[^>]+>/g, " ").replace(/&#39;|&#x27;/g, "'").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
   log(`served from ${doc ? new URL(doc.url).pathname : "?"} (HTTP ${doc?.status}): ${serverText.slice(0, 300) || "(no text)"}`);
   await page.waitForLoadState("networkidle", { timeout: 20_000 }).catch(() => log("network not idle after 20 s (continuing)"));
 } catch (err) {
@@ -138,7 +138,7 @@ log(`window ended on ${page.url().split("?")[0]} (App Bridge leaves for Shopify 
 log(`visible text there: ${text.slice(0, 200) || "(none)"}`);
 const verdict = /BulkFlow can.t start|couldn.t load|Application Error|Unhandled Thrown/i.test(serverText)
   ? "ERROR PAGE"
-  : /Give every product the SEO|Start your first job|Running now|Recent jobs/.test(serverText)
+  : /Give every product the SEO|Keep your catalog's SEO complete|Start your first job|Running now|Recent jobs|Plan & usage.*Current plan|What should BulkFlow write/.test(serverText)
     ? "APP LOADED"
     : documents.some((d) => d.url.includes("/auth/session-token"))
       ? "SIGN-IN RESTARTED (bounce page)"
