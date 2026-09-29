@@ -1,4 +1,5 @@
 import "@shopify/shopify-app-react-router/adapters/node";
+import { setAbstractFetchFunc } from "@shopify/shopify-api/runtime";
 import {
   ApiVersion,
   AppDistribution,
@@ -11,6 +12,19 @@ import { billingConfig } from "./billing.server";
 import { describeProblem, diagnoseSessionToken, sessionTokenFromRequest } from "./lib/shopify/sessionTokenCheck.server";
 import { BOUNCE_LIMIT, diagnoseLoop, isBounceRedirect, recordBounce } from "./lib/shopify/authLoopGuard.server";
 import { DEFAULT_SCOPES, buildInfo, configErrorResponse, missingRequiredConfig, resolveAppUrlDetailed } from "./config.server";
+import { StepTimeoutError, fetchWithTimeout, withDeadline } from "./lib/deadline.server";
+
+/**
+ * Every request the Shopify library makes (token exchange, token refresh,
+ * GraphQL) goes through this fetch. Node's fetch otherwise waits up to 300 s
+ * for a response, the same as Vercel's function limit, so a stalled call
+ * held the embedded page blank for ~5 minutes. SHOPIFY_FETCH_TIMEOUT_MS is
+ * deliberately longer than SIGN_IN_DEADLINE_MS below, so a stalled sign-in
+ * reports itself clearly first and this only frees the connection.
+ */
+export const SHOPIFY_FETCH_TIMEOUT_MS = 30_000;
+export const SIGN_IN_DEADLINE_MS = 20_000;
+setAbstractFetchFunc(fetchWithTimeout(SHOPIFY_FETCH_TIMEOUT_MS));
 
 const appUrl = resolveAppUrlDetailed();
 const build = buildInfo();
@@ -80,9 +94,23 @@ const admin: typeof shopify.authenticate.admin = async (request) => {
       throw sessionConfigErrorResponse(msg, found.isDocumentRequest);
     }
   }
+  const shopParam = new URL(request.url).searchParams.get("shop") ?? "unknown shop";
+  const started = Date.now();
   try {
-    return await shopify.authenticate.admin(request);
+    const result = await withDeadline("Shopify sign-in", SIGN_IN_DEADLINE_MS, () => shopify.authenticate.admin(request), shopParam);
+    const took = Date.now() - started;
+    if (took > 2_000) console.warn(`[timing] Shopify sign-in took ${took} ms for ${shopParam}`);
+    return result;
   } catch (err) {
+    if (err instanceof StepTimeoutError) {
+      const msg = {
+        title: "Shopify didn't respond while BulkFlow was signing in",
+        detail: `Signing in to ${shopParam} (checking the stored session, and renewing store access with Shopify if it had expired) didn't finish within ${Math.round(SIGN_IN_DEADLINE_MS / 1000)} seconds, so BulkFlow stopped waiting instead of leaving a blank page.`,
+        fix: "Reload the app. If it happens again, check status.shopify.com, then send the Vercel log lines starting with [slow] and [auth] from that minute.",
+      };
+      console.error(`[auth] ${msg.title}. ${msg.detail}`);
+      throw sessionConfigErrorResponse(msg, !request.headers.get("authorization"));
+    }
     // A redirect to the bounce page is normally one step of sign-in. Many in
     // a row for the same shop is the silent reload loop: stop and explain.
     if (isBounceRedirect(err)) {

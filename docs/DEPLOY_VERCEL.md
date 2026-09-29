@@ -73,3 +73,20 @@ Shopify's library answers every failed sign-in on a page load by fetching a new 
 For more detail, set `SHOPIFY_LOG_LEVEL=debug` in Vercel and redeploy: the library's own auth reasoning then appears in the function logs.
 
 If you still see a silent loop with none of these pages, the deployment serving your domain isn't running this code: check the `commit` on `/healthz` and redeploy the newest entry.
+
+## Troubleshooting: grey loading screen that sits for minutes
+
+Every step of an admin page load now has a deadline, so a stalled dependency shows an error page within about 20 seconds instead of a grey screen until Vercel kills the function (300 s, `FUNCTION_INVOCATION_TIMEOUT`):
+
+| Step | Limit | Page / log |
+|---|---|---|
+| Shopify sign-in (session lookup, token exchange, refreshing an expired store token) | 20 s | "Shopify didn't respond while BulkFlow was signing in", `[auth] …` |
+| Any single request the Shopify library sends (token calls, GraphQL) | 30 s | aborted; surfaces as the sign-in page above or "This page couldn't load" |
+| Database connect / wait for a pooled connection | 10 s each | "This page couldn't load" |
+| Any single database query | 15 s | "This page couldn't load" |
+| Billing check (only when `BILLING_PLAN` is set) | 20 s | "This page couldn't load" |
+
+What the Vercel function logs show:
+
+- `[timing] /app for <shop>: sign-in N ms, total N ms` on every admin page load. If this line never appears for a page load, the request isn't reaching the app at all (check the domain, and `/healthz`).
+- `[slow] <step> still waiting after Ns (<shop>)` every 5 s while a step is stuck, which names the step.

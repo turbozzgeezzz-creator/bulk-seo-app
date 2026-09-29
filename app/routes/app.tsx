@@ -1,27 +1,36 @@
 import type { HeadersFunction, LoaderFunctionArgs } from "react-router";
-import { Outlet, useLoaderData, useRouteError } from "react-router";
+import { Outlet, isRouteErrorResponse, useLoaderData, useRouteError } from "react-router";
 import { boundary } from "@shopify/shopify-app-react-router/server";
 import { AppProvider } from "@shopify/shopify-app-react-router/react";
 
 import { authenticate, requireConfig } from "../shopify.server";
 import { BILLING_IS_TEST, BILLING_PLAN } from "../billing.server";
 import { ensureWorkerStarted } from "../lib/jobs/worker.server";
+import { withDeadline } from "../lib/deadline.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   requireConfig();
-  const { billing } = await authenticate.admin(request);
+  const started = Date.now();
+  const { billing, session } = await authenticate.admin(request);
+  const authMs = Date.now() - started;
   ensureWorkerStarted();
 
   // Billing stays off until the app owner sets a plan (docs/OPEN_DECISIONS.md).
   if (BILLING_PLAN) {
     // Plan names come from env, so TypeScript can't infer them from the config literal.
     const plan = BILLING_PLAN as never;
-    await billing.require({
-      plans: [plan],
-      isTest: BILLING_IS_TEST,
-      onFailure: async () => billing.request({ plan, isTest: BILLING_IS_TEST }),
-    });
+    await withDeadline("Shopify billing check", 20_000, () =>
+      billing.require({
+        plans: [plan],
+        isTest: BILLING_IS_TEST,
+        onFailure: async () => billing.request({ plan, isTest: BILLING_IS_TEST }),
+      }),
+    );
   }
+
+  // One line per admin page load, so the Vercel logs show that requests
+  // arrive and how long sign-in took.
+  console.log(`[timing] ${new URL(request.url).pathname} for ${session.shop}: sign-in ${authMs} ms, total ${Date.now() - started} ms`);
 
   // eslint-disable-next-line no-undef
   return { apiKey: process.env.SHOPIFY_API_KEY || "" };
@@ -44,7 +53,22 @@ export default function App() {
 
 // Shopify needs React Router to catch some thrown responses, so that their headers are included in the response.
 export function ErrorBoundary() {
-  return boundary.error(useRouteError());
+  const error = useRouteError();
+  if (isRouteErrorResponse(error)) return boundary.error(error);
+  // Anything else (a timed-out database query, a Shopify API error) would
+  // otherwise fall through to React Router's bare default page. Production
+  // builds hide the server's message, so say what to do; the Vercel logs
+  // carry the step that failed ("[slow] …" / the error itself).
+  return (
+    <main style={{ maxWidth: 640, margin: "48px auto", padding: 24, background: "#fff", borderRadius: 12, font: "14px/1.5 -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif", color: "#303030", boxShadow: "0 1px 0 rgba(0,0,0,.07), 0 0 0 1px rgba(0,0,0,.06)" }}>
+      <p style={{ margin: "0 0 4px", fontSize: 12, fontWeight: 600, color: "#8e1f0b", letterSpacing: ".04em", textTransform: "uppercase" }}>BulkFlow hit a problem</p>
+      <h1 style={{ margin: "0 0 12px", fontSize: 20 }}>This page couldn&apos;t load</h1>
+      <p style={{ margin: "0 0 12px" }}>A step BulkFlow needed (usually the database or Shopify) failed or didn&apos;t answer in time, so it stopped waiting rather than leave the page blank. Nothing in your store was changed.</p>
+      <p style={{ margin: 0, padding: 12, borderRadius: 8, background: "#fff1c7" }}>
+        <strong>What to do:</strong> reload the app. If it keeps happening, send the Vercel log lines from that minute (they name the step that failed).
+      </p>
+    </main>
+  );
 }
 
 export const headers: HeadersFunction = (headersArgs) => {
