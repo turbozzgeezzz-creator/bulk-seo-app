@@ -138,7 +138,7 @@ log(`window ended on ${page.url().split("?")[0]} (App Bridge leaves for Shopify 
 log(`visible text there: ${text.slice(0, 200) || "(none)"}`);
 const verdict = /BulkFlow can.t start|couldn.t load|Application Error|Unhandled Thrown/i.test(serverText)
   ? "ERROR PAGE"
-  : /Give every product the SEO|Keep your catalog's SEO complete|Start your first job|Running now|Recent jobs|Plan & usage.*Current plan|What should BulkFlow write/.test(serverText)
+  : /Give every product the SEO|Keep your catalog's SEO complete|Start your first job|Running now|Recent jobs|Plan & usage.*Current plan|Only fill what's missing/.test(serverText)
     ? "APP LOADED"
     : documents.some((d) => d.url.includes("/auth/session-token"))
       ? "SIGN-IN RESTARTED (bounce page)"
